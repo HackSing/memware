@@ -670,7 +670,10 @@ function extensionForMime(mediaType: string): string {
 }
 
 function sanitizePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200) || "default";
+  // User ids are logical database keys, never filesystem syntax. A fixed hash
+  // avoids dot-segment traversal, lossy replacement collisions, and truncation
+  // aliases while preserving stable asset locations.
+  return `user_${shaHex(value).slice(0, 40)}`;
 }
 
 function parseJsonArray(value: string): string[] {

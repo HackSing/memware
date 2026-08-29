@@ -283,8 +283,8 @@ export function buildExtractorUserMessage(opts: {
   sessionId: string;
 }): string {
   return [
-    `userId: ${opts.userId}`,
-    `sessionId: ${opts.sessionId}`,
+    // Local tenant/session identifiers are routing metadata. They do not help
+    // extraction and must not be disclosed to an external model provider.
     `turnIndex: ${opts.turnIndex}`,
     `ts: ${new Date().toISOString()}`,
     '',

@@ -94,10 +94,11 @@ After the first npm release, `npx -y memware@latest serve` always resolves the n
 | --- | --- |
 | Long-running coding partnership | Keep project constraints, personal preferences, and prior decisions available across sessions. |
 | Multi-session work | Recover relevant context in a new session instead of restating the same background. |
-| Multi-user agents | Use userId to isolate memory spaces for different users. |
+| Private single-user agents | Bind one local service process to one trusted tenant and reject caller-selected identities. |
+| Authenticated multi-user hosts | Let a trusted downstream map authenticated sessions to isolated tenant capabilities without accepting caller-selected identities. |
 | Local-first workflows | Let users search, audit, and erase the memory they own. |
 
-memware is not a chat-history sync service, and it does not mean raw conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure. Choose that provider and deployment according to the sensitivity of your data.
+memware is not a chat-history sync service, and it does not mean conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure, while local `userId` and `sessionId` routing metadata is omitted from provider prompts. Choose that provider and deployment according to the sensitivity of your data.
 
 ## Product boundaries
 
@@ -107,6 +108,7 @@ memware is not a chat-history sync service, and it does not mean raw conversatio
 | Claude Code Stop Hook for automatic writes | Hosted cloud sync or a team admin console |
 | Local builds for macOS arm64 and Linux x64 | Public npm and GitHub Release distribution |
 | Local SQLite, vector indexes, and audit logs | A non-technical visual memory manager |
+| Trusted-host multi-tenant capability API | Built-in identity provider or tenant admin console |
 
 ## Documentation
 

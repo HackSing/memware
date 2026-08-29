@@ -149,7 +149,7 @@ async function main() {
       facts: {}, routes: {},
     };
     await routeUnifiedExtraction(ext, { ...baseCtx({ auditLog: new AuditLogWriter(auditDir) }), memory: mem as never, workspace: ws as never });
-    const path = join(auditDir, '2026-04-18.jsonl');
+    const path = join(auditDir, `${new Date().toISOString().slice(0, 10)}.jsonl`);
     const content = readFileSync(path, 'utf8').trim();
     assert(content.length > 0, 'audit log line written');
     assert(JSON.parse(content).payload.event.summary === 's', 'audit captures payload');
@@ -169,7 +169,7 @@ async function main() {
       memory: mem as never,
       workspace: ws as never,
     });
-    const path = join(auditDir, '2026-04-18.jsonl');
+    const path = join(auditDir, `${new Date().toISOString().slice(0, 10)}.jsonl`);
     const content = readFileSync(path, 'utf8').trim();
     const entry = JSON.parse(content) as { errors: Array<{ path?: string }> };
     assert(entry.errors[0]?.path === 'facts.profile_update.basic_info.0.evidence', 'structured extract errors written to audit');
@@ -262,7 +262,7 @@ async function main() {
     });
     assert(actions.some((a) => a.kind === 'active_thread' && a.detail === '阅读《三体》'), 'thread action detail uses label');
     assert(actions.some((a) => a.kind === 'relationship_update' && a.detail === '温暖'), 'relationship action detail uses label');
-    const path = join(auditDir, '2026-04-18.jsonl');
+    const path = join(auditDir, `${new Date().toISOString().slice(0, 10)}.jsonl`);
     const entry = JSON.parse(readFileSync(path, 'utf8').trim()) as {
       payload: {
         facts: {

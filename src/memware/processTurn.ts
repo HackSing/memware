@@ -110,7 +110,7 @@ export async function processTurn(input: ProcessTurnInput): Promise<ProcessTurnR
     turnIndex: input.turnIndex,
     userMessage: input.userMessage,
     assistantMessage: input.assistantMessage,
-    auditLog: new AuditLogWriter(input.auditDir),
+    auditLog: new AuditLogWriter(input.auditDir, { privateMode: true }),
     extractErrors: result.errors,
     thresholds: mergeThresholds(memCfg?.unifiedThresholds),
   });

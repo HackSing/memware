@@ -135,8 +135,8 @@ function render(language: Language): string {
   add(
     "",
     zh
-      ? "memware 不是聊天记录同步服务，也不代表原始对话只在本地处理：用于提取和向量化的文本仍会发送到你配置的模型接口。请根据数据敏感度选择服务商和部署方式。"
-      : "memware is not a chat-history sync service, and it does not mean raw conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure. Choose that provider and deployment according to the sensitivity of your data.",
+      ? "memware 不是聊天记录同步服务，也不代表原始对话只在本地处理：用于提取和向量化的正文仍会发送到你配置的模型接口，但本地 `userId` 和 `sessionId` 不会作为提示词元数据发送。请根据数据敏感度选择服务商和部署方式。"
+      : "memware is not a chat-history sync service, and it does not mean conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure, while local `userId` and `sessionId` routing metadata is omitted from provider prompts. Choose that provider and deployment according to the sensitivity of your data.",
     "",
     zh ? "## 产品边界" : "## Product boundaries",
     "",

@@ -11,10 +11,10 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { DEFAULT_CONFIG } from "../agent/memory/config";
-import { loadEnv, MemwareConfigError, type MemwareEnv } from "./env";
-import { createDefaultServiceFactory, MemoryRegistry } from "./memoryRegistry";
+import { loadEnv, type MemwareEnv } from "./env";
 import { createMemwareServer } from "./server";
 import { runHook } from "./hook";
+import { createSingleTenantProvider, type TenantProvider } from "./tenantProvider";
 
 const USAGE = `Usage: memware <serve|hook>
 
@@ -30,7 +30,7 @@ Environment:
   MEMWARE_EMBEDDING_BASE_URL  Optional separate embedding endpoint.
   MEMWARE_EMBEDDING_API_KEY   Required when embedding uses a different origin.
   MEMWARE_DATA_DIR         Storage root (default ~/.memware).
-  MEMWARE_USER_ID          Default user id (default "default").`;
+  MEMWARE_USER_ID          Process-bound tenant id (default "default").`;
 
 function warnIfModelMissing(env: MemwareEnv): void {
   // Extraction falls back to the kernel default model, which pairs with the
@@ -47,39 +47,38 @@ function warnIfModelMissing(env: MemwareEnv): void {
 
 async function serve(): Promise<void> {
   let env: MemwareEnv;
+  let provider: TenantProvider;
   try {
     env = loadEnv();
+    provider = createSingleTenantProvider(env);
   } catch (err) {
-    if (err instanceof MemwareConfigError) {
-      console.error(`[memware] ${err.message}`);
-      process.exit(1);
-    }
-    throw err;
+    console.error(`[memware] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+    return;
   }
   warnIfModelMissing(env);
 
-  const registry = new MemoryRegistry(createDefaultServiceFactory(env));
-  const server = createMemwareServer(env, registry);
+  const server = createMemwareServer(env, provider);
 
   const shutdown = async (): Promise<void> => {
-    await registry.closeAll();
+    await provider.close();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
 
   await server.connect(new StdioServerTransport());
-  console.error(`[memware] serve ready — data dir ${env.dataDir}`);
+  console.error("[memware] serve ready — single-tenant boundary active");
 }
 
 async function hook(): Promise<void> {
   // Hook mode never blocks the host: any failure logs to stderr and exits 0.
   try {
     const env = loadEnv();
-    const registry = new MemoryRegistry(createDefaultServiceFactory(env));
+    const provider = createSingleTenantProvider(env);
     const stdinText = await Bun.stdin.text();
-    await runHook(env, registry, stdinText);
-    await registry.closeAll();
+    await runHook(env, provider, stdinText);
+    await provider.close();
   } catch (err) {
     console.error(`[memware hook] ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -87,6 +86,9 @@ async function hook(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // memware owns a private process; restrict all newly created files even when
+  // a downstream library does not pass explicit modes (e.g. SQLite sidecars).
+  process.umask(0o077);
   const command = process.argv[2];
   switch (command) {
     case "serve":

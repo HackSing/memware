@@ -14,10 +14,9 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import type { MemwareEnv } from "./env";
-import type { MemoryRegistry } from "./memoryRegistry";
-import { userStorePaths } from "./paths";
 import { buildExtractionConfig, processTurn } from "./processTurn";
 import { extractLastTurn } from "./transcript";
+import type { TenantLease, TenantProvider } from "./tenantProvider";
 
 const HookInputSchema = z
   .object({
@@ -44,7 +43,7 @@ function logSkip(reason: string, detail?: unknown): HookResult {
  */
 export async function runHook(
   env: MemwareEnv,
-  registry: MemoryRegistry,
+  provider: TenantProvider,
   stdinText: string,
 ): Promise<HookResult> {
   let parsed: unknown;
@@ -70,21 +69,26 @@ export async function runHook(
   if (!turn) return logSkip("no-user-turn");
 
   const sessionId = hook.data.session_id ?? "memware-hook";
+  let lease: TenantLease | undefined;
   try {
-    const memory = await registry.get(env.defaultUserId);
-    await memory.warmup(env.defaultUserId);
-    const result = await processTurn({
-      memory,
-      config: buildExtractionConfig(env),
-      auditDir: userStorePaths(env.dataDir, env.defaultUserId).auditDir,
-      userId: env.defaultUserId,
-      sessionId,
-      turnIndex: turn.turnIndex,
-      userMessage: turn.userMessage,
-      assistantMessage: turn.assistantMessage,
+    lease = await provider.acquire({ action: "write" });
+    const result = await lease.handle.run(async (memory, userId) => {
+      await memory.warmup(userId);
+      return processTurn({
+        memory,
+        config: buildExtractionConfig(env),
+        auditDir: lease!.handle.tenant.paths.auditDir,
+        userId,
+        sessionId,
+        turnIndex: turn.turnIndex,
+        userMessage: turn.userMessage,
+        assistantMessage: turn.assistantMessage,
+      });
     });
     return { wrote: result.ok, reason: result.error, actions: result.actions };
   } catch (err) {
     return logSkip("write-failed", err);
+  } finally {
+    await lease?.release();
   }
 }

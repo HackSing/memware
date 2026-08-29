@@ -21,18 +21,20 @@ It runs in two modes:
 
 ## The seven tools
 
-`memware serve` exposes these tools over MCP. Every `userId` is optional and
-defaults to `MEMWARE_USER_ID` (or `default`).
+`memware serve` exposes these tools over MCP. The process is bound to exactly
+one tenant from `MEMWARE_USER_ID` (or `default`). The optional `userId` fields
+remain for protocol compatibility, but they may only be omitted or equal that
+bound value; selecting another tenant is rejected.
 
 | Tool | Arguments | What it does |
 | --- | --- | --- |
-| `memory_status` | *(none)* | Report memware's storage location and memory runtime status. |
-| `memory_warmup` | `userId?` | Ensure a user profile exists (idempotent). |
+| `memory_status` | *(none)* | Report the sanitized security boundary, model endpoint origins, and memory runtime status. |
+| `memory_warmup` | `userId?` | Ensure the bound tenant profile exists (idempotent). |
 | `memory_get_context` | `userId?`, `query` | Retrieve memory context (a `system` + `context` text pair) relevant to a query. |
 | `memory_process` | `userId?`, `sessionId`, `turnIndex`, `userMessage`, `assistantMessage` | Extract and persist memory from one conversation turn. |
-| `memory_search` | `userId?`, `query`, `limit?` | Search a user's memory; returns matching `results` and `clusters`. |
-| `memory_archive` | `userId?` | Archive stale memory clusters for a user. |
-| `memory_reset` | `userId?` | Reset (erase) a user's memory. |
+| `memory_search` | `userId?`, `query`, `limit?` | Search the bound tenant's memory; returns matching `results` and `clusters`. |
+| `memory_archive` | `userId?` | Archive stale memory clusters for the bound tenant. |
+| `memory_reset` | `userId?` | Delete all database, vector, audit, asset, relation, cache, and sidecar artifacts for the bound tenant. |
 
 > In an automated setup you rarely call `memory_process` yourself — the Stop hook
 > does the writing. The read tools (`memory_warmup`, `memory_get_context`,
@@ -116,8 +118,8 @@ and conversation data.
 | `MEMWARE_EMBEDDING_DIM` | no | kernel default | Embedding vector dimension (positive integer). |
 | `MEMWARE_EMBEDDING_BASE_URL` | no | chat endpoint | Optional separate OpenAI-compatible embedding endpoint. |
 | `MEMWARE_EMBEDDING_API_KEY` | conditional | chat key | Required when the embedding endpoint uses a different origin; prevents sending the chat key to another service. |
-| `MEMWARE_DATA_DIR` | no | `~/.memware` | Storage root for all users' memory. |
-| `MEMWARE_USER_ID` | no | `default` | Default user id (used by the hook, and by tools when `userId` is omitted). |
+| `MEMWARE_DATA_DIR` | no | `~/.memware` | Private storage root for the bound tenant and lifecycle metadata. |
+| `MEMWARE_USER_ID` | no | `default` | Trusted tenant id bound for the lifetime of this serve or hook process. |
 | `MEMWARE_DEBUG` | no | off | Set to `1` or `true` for verbose extraction diagnostics on stderr. |
 
 **About the defaults.** memware never re-declares the memory kernel's own
@@ -164,7 +166,7 @@ Notes:
 
 - The hook reads Claude Code's Stop-hook JSON on stdin (it carries the
   `transcript_path`), parses the final user/assistant turn, and writes it to the
-  **default user** (`MEMWARE_USER_ID`, or `default`).
+  **process-bound tenant** (`MEMWARE_USER_ID`, or `default`).
 - **The hook never blocks Claude Code.** Any failure — bad config, unreachable
   endpoint, unparseable transcript — is logged to stderr and the hook exits `0`.
   A dropped turn is silent; it never interrupts your session.
@@ -186,29 +188,47 @@ to call `memory_process` by hand (the hook already does).
 
 ## Data & privacy
 
-All memory lives on the local machine under `~/.memware/` (or `MEMWARE_DATA_DIR`),
-one directory per user id:
+All memory lives on the local machine under `~/.memware/` (or `MEMWARE_DATA_DIR`).
+Raw user ids never become path segments; an instance salt derives an opaque,
+collision-resistant tenant key:
 
 ```
 ~/.memware/
-└── <userId>/
+├── .instance-salt        # private local salt; never sent to a provider
+├── .control/<tenantKey>/ # reset lock, operation markers, generation fence
+├── deletion-receipts/    # content-free reset receipts
+└── tenants/<tenantKey>/
     ├── memory/
-    │   ├── memory.db     # SQLite: facts, clusters, profile
-    │   └── vectors/      # embedding vector store (semantic search)
+    │   ├── memory.db     # SQLite: facts, clusters, profile, graph metadata
+    │   ├── vectors       # embedding vector database
+    │   └── assets/       # captured local assets
     └── audit/            # extraction audit log
 ```
 
 - **Local by default.** memware stores everything on disk here. The only data
   that leaves the machine is what any LLM app sends: each turn's text is sent to
-  your configured OpenAI-compatible endpoint for extraction and embedding. Choose
-  `MEMWARE_BASE_URL` accordingly.
-- **Multi-user.** Pass a `userId` to any tool (or set `MEMWARE_USER_ID`) to keep
-  separate memories side by side; each gets its own `<userId>/` subdirectory.
-  User ids are sanitized to a single path-safe segment, so they cannot escape the
-  data root.
-- **Deletion = erasure.** Delete `~/.memware` (everything) or a single
-  `<userId>/` subdirectory (one user) to remove that memory permanently. The
-  `memory_reset` tool clears a user's memory in place.
+  your configured OpenAI-compatible endpoint for extraction and embedding. Raw
+  local `userId` and `sessionId` routing metadata is omitted from extractor
+  prompts. Choose `MEMWARE_BASE_URL` accordingly.
+- **Deployment-selected tenant boundary.** The CLI remains single-tenant: MCP
+  callers cannot switch tenant by passing another `userId`, and separate local
+  identities should use separate processes. Repository/Git source consumers can
+  embed `TrustedMultiTenantProvider` behind an authenticated host. In that mode the
+  host injects `RequestSecurityContext` and a per-action authorizer; caller
+  `userId` is only an assertion, never authority. memware does not provide an
+  identity provider, hosted gateway, or tenant admin console.
+- **Private local files.** memware applies a `0077` process umask and tightens
+  owned directories/files to `0700`/`0600`, including SQLite sidecars and JSONL.
+- **Deletion = verified lifecycle.** `memory_reset` blocks new operations, drains
+  in-flight work across serve/hook processes, closes stale handles through a
+  generation fence, atomically detaches the tenant tree, deletes every owned
+  artifact, and only then returns `ok: true`. A content-free receipt remains
+  outside the tenant tree. `partial_failure` means deletion was not verified and
+  normal operations remain blocked until recovery succeeds.
+- **Legacy migration is fail-closed.** On first start, the old `<userId>/` layout
+  is moved only when its database proves it belongs to the bound tenant. Ambiguous
+  aliases, symlinks, mixed tenant data, or simultaneous old/new layouts stop
+  startup for manual review instead of merging data.
 
 ## Upgrade / uninstall
 

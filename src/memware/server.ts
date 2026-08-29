@@ -14,70 +14,125 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type {
+  CallToolResult,
+  ServerNotification,
+  ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { resolveModelRuntimeConfig, type MemwareEnv } from "./env";
-import type { MemoryRegistry } from "./memoryRegistry";
-import { userStorePaths } from "./paths";
 import { buildExtractionConfig, processTurn } from "./processTurn";
+import type {
+  RequestSecurityContext,
+  TenantAction,
+  TenantLease,
+  TenantProvider,
+} from "./tenantProvider";
 
 function ok(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
-/** Build the memware MCP server wired to a memory registry. */
-export function createMemwareServer(env: MemwareEnv, registry: MemoryRegistry): McpServer {
+type ToolRequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+export interface MemwareServerOptions {
+  /** Required for trusted-host-v1; derive identity only from authenticated host state. */
+  resolveSecurityContext?: (
+    extra: ToolRequestExtra,
+  ) => RequestSecurityContext | Promise<RequestSecurityContext>;
+}
+
+/** Build the memware MCP server wired to a deployment-selected tenant provider. */
+export function createMemwareServer(
+  env: MemwareEnv,
+  provider: TenantProvider,
+  options: MemwareServerOptions = {},
+): McpServer {
+  if (provider.boundary === "trusted-host-v1" && !options.resolveSecurityContext) {
+    throw new Error("trusted-host-v1 requires resolveSecurityContext");
+  }
   const server = new McpServer(
     { name: "memware", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
   const extractionConfig = buildExtractionConfig(env);
   const modelConfig = resolveModelRuntimeConfig(env);
-  const uid = (userId?: string): string => userId ?? env.defaultUserId;
+
+  const acquire = async (
+    action: TenantAction,
+    requestedUserId: string | undefined,
+    extra: ToolRequestExtra,
+  ): Promise<TenantLease> => {
+    const securityContext = options.resolveSecurityContext
+      ? await options.resolveSecurityContext(extra)
+      : undefined;
+    return provider.acquire({ action, requestedUserId, securityContext });
+  };
+
+  const withTenant = async <T>(
+    action: TenantAction,
+    requestedUserId: string | undefined,
+    extra: ToolRequestExtra,
+    operation: (lease: TenantLease) => Promise<T>,
+  ): Promise<T> => {
+    const lease = await acquire(action, requestedUserId, extra);
+    try {
+      return await operation(lease);
+    } finally {
+      await lease.release();
+    }
+  };
 
   server.registerTool(
     "memory_status",
-    { description: "Report memware storage location and memory runtime status.", inputSchema: {} },
-    async () => {
-      const user = env.defaultUserId;
-      const paths = userStorePaths(env.dataDir, user);
-      const memory = await registry.get(user);
-      return ok({
-        server: "memware",
-        dataDir: env.dataDir,
-        defaultUserId: user,
-        storage: { dbPath: paths.dbPath, vectorDbPath: paths.vectorDbPath },
-        modelConfiguration: {
-          source: modelConfig.endpointSource,
-          projectConfigDiscovery: false,
-          chatEndpointOrigin: modelConfig.chatEndpointOrigin,
-          embeddingEndpointOrigin: modelConfig.embeddingEndpointOrigin,
-          embeddingUsesSeparateCredential: modelConfig.embeddingUsesSeparateCredential,
-        },
-        runtime: memory.getRuntimeStatus?.() ?? { kind: "unknown" },
+    { description: "Report the sanitized memware security boundary and runtime status.", inputSchema: {} },
+    async (_args, extra) => {
+      return withTenant("status", undefined, extra, async (lease) => {
+        const runtime = await lease.handle.run(async (memory) =>
+          memory.getRuntimeStatus?.() ?? { kind: "unknown" },
+        );
+        return ok({
+          server: "memware",
+          ...provider.status(),
+          storageLayoutVersion: "t1",
+          permissionsSecure: true,
+          resetState: lease.handle.lifecycleState,
+          tenantRef: lease.tenantRef,
+          modelConfiguration: {
+            source: modelConfig.endpointSource,
+            projectConfigDiscovery: false,
+            chatEndpointOrigin: modelConfig.chatEndpointOrigin,
+            embeddingEndpointOrigin: modelConfig.embeddingEndpointOrigin,
+            embeddingUsesSeparateCredential: modelConfig.embeddingUsesSeparateCredential,
+          },
+          runtime,
+        });
       });
     },
   );
 
   server.registerTool(
     "memory_warmup",
-    { description: "Ensure a user profile exists (idempotent).", inputSchema: { userId: z.string().optional() } },
-    async ({ userId }) => {
-      const user = uid(userId);
-      await (await registry.get(user)).warmup(user);
-      return ok({ ok: true, userId: user });
+    { description: "Ensure the bound tenant profile exists (idempotent).", inputSchema: { userId: z.string().optional() } },
+    async ({ userId }, extra) => {
+      return withTenant("warmup", userId, extra, async (lease) => {
+        await lease.handle.run((memory) => memory.warmup(lease.userId));
+        return ok({ ok: true, userId: lease.userId, tenantRef: lease.tenantRef });
+      });
     },
   );
 
   server.registerTool(
     "memory_get_context",
     {
-      description: "Retrieve memory context (system + context text) for a query.",
+      description: "Retrieve the bound tenant's memory context for a query.",
       inputSchema: { userId: z.string().optional(), query: z.string() },
     },
-    async ({ userId, query }) => {
-      const user = uid(userId);
-      const ctx = await (await registry.get(user)).getContext(user, query);
-      return ok({ system: ctx.prompts.system, context: ctx.prompts.context });
+    async ({ userId, query }, extra) => {
+      return withTenant("read", userId, extra, async (lease) => {
+        const ctx = await lease.handle.run((memory) => memory.getContext(lease.userId, query));
+        return ok({ system: ctx.prompts.system, context: ctx.prompts.context });
+      });
     },
   );
 
@@ -93,56 +148,63 @@ export function createMemwareServer(env: MemwareEnv, registry: MemoryRegistry): 
         assistantMessage: z.string(),
       },
     },
-    async ({ userId, sessionId, turnIndex, userMessage, assistantMessage }) => {
-      const user = uid(userId);
-      const result = await processTurn({
-        memory: await registry.get(user),
-        config: extractionConfig,
-        auditDir: userStorePaths(env.dataDir, user).auditDir,
-        userId: user,
-        sessionId,
-        turnIndex,
-        userMessage,
-        assistantMessage,
+    async ({ userId, sessionId, turnIndex, userMessage, assistantMessage }, extra) => {
+      return withTenant("write", userId, extra, async (lease) => {
+        const result = await lease.handle.run((memory) =>
+          processTurn({
+            memory,
+            config: extractionConfig,
+            auditDir: lease.handle.tenant.paths.auditDir,
+            userId: lease.userId,
+            sessionId,
+            turnIndex,
+            userMessage,
+            assistantMessage,
+          }),
+        );
+        return ok(result);
       });
-      return ok(result);
     },
   );
 
   server.registerTool(
     "memory_search",
     {
-      description: "Search a user's memory for a query.",
+      description: "Search the bound tenant's memory for a query.",
       inputSchema: { userId: z.string().optional(), query: z.string(), limit: z.number().int().positive().optional() },
     },
-    async ({ userId, query, limit }) => {
-      const user = uid(userId);
-      const memory = await registry.get(user);
-      const [results, clusters] = await Promise.all([
-        memory.searchMemory(user, query, limit),
-        memory.searchClusters(user, query, limit !== undefined ? { limit } : undefined),
-      ]);
-      return ok({ results, clusters });
+    async ({ userId, query, limit }, extra) => {
+      return withTenant("search", userId, extra, async (lease) => {
+        const [results, clusters] = await lease.handle.run((memory) =>
+          Promise.all([
+            memory.searchMemory(lease.userId, query, limit),
+            memory.searchClusters(lease.userId, query, limit !== undefined ? { limit } : undefined),
+          ]),
+        );
+        return ok({ results, clusters });
+      });
     },
   );
 
   server.registerTool(
     "memory_archive",
-    { description: "Archive stale memory clusters for a user.", inputSchema: { userId: z.string().optional() } },
-    async ({ userId }) => {
-      const user = uid(userId);
-      await (await registry.get(user)).archive(user);
-      return ok({ ok: true, userId: user });
+    { description: "Archive stale memory clusters for the bound tenant.", inputSchema: { userId: z.string().optional() } },
+    async ({ userId }, extra) => {
+      return withTenant("archive", userId, extra, async (lease) => {
+        await lease.handle.run((memory) => memory.archive(lease.userId));
+        return ok({ ok: true, userId: lease.userId, tenantRef: lease.tenantRef });
+      });
     },
   );
 
   server.registerTool(
     "memory_reset",
-    { description: "Reset a user's memory.", inputSchema: { userId: z.string().optional() } },
-    async ({ userId }) => {
-      const user = uid(userId);
-      await (await registry.get(user)).reset(user);
-      return ok({ ok: true, userId: user });
+    { description: "Delete all memory artifacts for the bound tenant.", inputSchema: { userId: z.string().optional() } },
+    async ({ userId }, extra) => {
+      return withTenant("reset", userId, extra, async (lease) => {
+        const result = await lease.handle.reset();
+        return ok({ ...result, userId: lease.userId, tenantRef: lease.tenantRef });
+      });
     },
   );
 

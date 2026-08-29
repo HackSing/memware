@@ -2,13 +2,13 @@
  * memware — per-user storage layout.
  *
  * Single source of truth for where a user's SQLite DB, vector store, and
- * unified-extraction audit log live under the memware data root. The layout
- * mirrors avatanel's `<root>/<userId>/memory/{memory.db,vectors}` convention so
- * the memory kernel sees a familiar shape, but the audit log is redirected into
- * the memware root (NOT ~/.avatanel) to keep memware self-contained.
+ * unified-extraction audit log live under the memware data root. Raw user ids
+ * never become path segments. Production derives an opaque, instance-scoped
+ * tenant key and keeps every tenant artifact below that root.
  */
 
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { join, resolve } from "node:path";
 
 export interface UserStorePaths {
   /** SQLite database file for this user. */
@@ -20,17 +20,22 @@ export interface UserStorePaths {
 }
 
 /**
- * Sanitize a user id into a single path-safe segment. Mirrors the sanitization
- * used by the memory kernel's audit fallback (runTurnExtraction.ts) so ids like
- * "a/b" cannot escape the data root.
+ * Derive a collision-resistant, path-safe storage key. This compatibility
+ * helper is intentionally injective only up to SHA-256 collision resistance;
+ * memware production uses a salted TenantKey from tenant.ts.
  */
 export function sanitizeUserId(userId: string): string {
-  return userId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `u1_${createHash("sha256").update(userId, "utf8").digest("base64url")}`;
 }
 
-/** Resolve the storage paths for a user under the memware data root. */
+/** Resolve compatibility storage paths without interpreting the user id as path syntax. */
 export function userStorePaths(dataDir: string, userId: string): UserStorePaths {
-  const base = join(dataDir, sanitizeUserId(userId));
+  const base = resolve(dataDir, "tenants", sanitizeUserId(userId));
+  return tenantStorePaths(base);
+}
+
+/** Resolve all per-tenant storage locations from an already trusted tenant root. */
+export function tenantStorePaths(base: string): UserStorePaths {
   return {
     dbPath: join(base, "memory", "memory.db"),
     vectorDbPath: join(base, "memory", "vectors"),

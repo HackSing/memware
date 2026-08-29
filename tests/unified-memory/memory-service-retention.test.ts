@@ -9,6 +9,22 @@ import type { SysCore } from '../../src/agent/memory/types';
 let passed = 0;
 let failed = 0;
 
+// Keep retention tests deterministic and prevent conversation-derived test
+// strings from ever reaching a real provider endpoint.
+const modelServer = Bun.serve({
+  port: 0,
+  async fetch(request) {
+    const body = await request.json() as { input?: string | string[] };
+    const inputs = Array.isArray(body.input) ? body.input : [body.input ?? ''];
+    return Response.json({
+      object: 'list',
+      data: inputs.map((_, index) => ({ object: 'embedding', index, embedding: [0, 0, 0, 0] })),
+      model: 'test-embedding',
+      usage: { prompt_tokens: 0, total_tokens: 0 },
+    });
+  },
+});
+
 function assert(condition: boolean, label: string): void {
   if (condition) {
     console.log(`  OK ${label}`);
@@ -33,6 +49,12 @@ function makeService(): { svc: MemoryService; dbPath: string } {
       write: {
         active_threads_limit: 3,
         current_focus_limit: 3,
+      },
+      model: {
+        api_key: 'test-only',
+        base_url: `${modelServer.url}v1`,
+        embedding_model: 'test-embedding',
+        embedding_dim: 4,
       },
     }),
     'utf8',
@@ -130,7 +152,11 @@ async function main(): Promise<void> {
   console.log(`\n${passed} assertions passed.`);
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error(err);
   process.exit(1);
-});
+} finally {
+  modelServer.stop(true);
+}

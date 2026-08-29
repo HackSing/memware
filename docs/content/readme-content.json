@@ -72,10 +72,17 @@
       }
     },
     {
-      "name": { "en": "Multi-user agents", "zh": "多用户 Agent" },
+      "name": { "en": "Private single-user agents", "zh": "私有单用户 Agent" },
       "result": {
-        "en": "Use userId to isolate memory spaces for different users.",
-        "zh": "通过 userId 隔离不同用户的记忆空间。"
+        "en": "Bind one local service process to one trusted tenant and reject caller-selected identities.",
+        "zh": "一个本地服务进程只绑定一个可信租户，并拒绝调用方切换身份。"
+      }
+    },
+    {
+      "name": { "en": "Authenticated multi-user hosts", "zh": "已认证多用户宿主" },
+      "result": {
+        "en": "Let a trusted downstream map authenticated sessions to isolated tenant capabilities without accepting caller-selected identities.",
+        "zh": "由可信下游把已认证会话映射为隔离的租户能力，不接受调用方自行选择身份。"
       }
     },
     {
@@ -102,6 +109,10 @@
     {
       "available": { "en": "Local SQLite, vector indexes, and audit logs", "zh": "本地 SQLite、向量索引与审计日志" },
       "notAvailable": { "en": "A non-technical visual memory manager", "zh": "面向非技术用户的可视化管理界面" }
+    },
+    {
+      "available": { "en": "Trusted-host multi-tenant capability API", "zh": "可信宿主多租户能力 API" },
+      "notAvailable": { "en": "Built-in identity provider or tenant admin console", "zh": "内置身份提供商与租户管理后台" }
     }
   ],
   "documents": [

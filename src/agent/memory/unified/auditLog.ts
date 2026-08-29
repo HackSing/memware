@@ -12,7 +12,17 @@
  * circular import (P3.1 clarification).
  */
 
-import { appendFileSync, mkdirSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  closeSync,
+  constants,
+  fchmodSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  writeSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { UnifiedMemoryExtraction } from './schema';
 
@@ -66,18 +76,44 @@ export class AuditLogWriter {
   private readonly baseDir: string;
   private dirEnsured = false;
 
-  constructor(baseDir: string) {
+  constructor(
+    baseDir: string,
+    private readonly options: { privateMode?: boolean } = {},
+  ) {
     this.baseDir = baseDir;
   }
 
   append(entry: AuditLogEntry): void {
     try {
       if (!this.dirEnsured) {
-        mkdirSync(this.baseDir, { recursive: true });
+        mkdirSync(this.baseDir, {
+          recursive: true,
+          ...(this.options.privateMode ? { mode: 0o700 } : {}),
+        });
+        if (this.options.privateMode) chmodSync(this.baseDir, 0o700);
         this.dirEnsured = true;
       }
-      const date = entry.ts.slice(0, 10);
-      appendFileSync(join(this.baseDir, `${date}.jsonl`), JSON.stringify(entry) + '\n', 'utf8');
+      // File routing must use a local trusted clock, never model-controlled
+      // event.ts. The event timestamp remains inside the JSON payload for audit.
+      const date = new Date().toISOString().slice(0, 10);
+      const path = join(this.baseDir, `${date}.jsonl`);
+      if (this.options.privateMode) {
+        const dir = lstatSync(this.baseDir);
+        if (dir.isSymbolicLink() || !dir.isDirectory()) throw new Error('unsafe private audit directory');
+        const fd = openSync(
+          path,
+          constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+          0o600,
+        );
+        try {
+          fchmodSync(fd, 0o600);
+          writeSync(fd, JSON.stringify(entry) + '\n', undefined, 'utf8');
+        } finally {
+          closeSync(fd);
+        }
+      } else {
+        appendFileSync(path, JSON.stringify(entry) + '\n', 'utf8');
+      }
     } catch {
       // Audit log failures must NEVER break a turn.
     }
