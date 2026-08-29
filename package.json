@@ -1,0 +1,23 @@
+{
+  "name": "memware-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Development repo for memware — the publishable npm units live in packages/. Build with Bun.",
+  "scripts": {
+    "test": "bun test tests/memware/",
+    "typecheck": "bunx tsc --noEmit",
+    "memware:serve": "bun src/memware/main.ts serve",
+    "memware:build": "bun scripts/memware-build.ts",
+    "memware:pack": "bun scripts/memware-pack.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "openai": "^4.70.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}
