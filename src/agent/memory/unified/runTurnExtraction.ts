@@ -48,6 +48,26 @@ export interface UnifiedTurnExtractionInput {
   turnIndex: number;
   userMessage: string;
   assistantMessage: string;
+  /**
+   * Host-owned audit destination. Trusted tenant hosts should pass the audit
+   * directory from their tenant capability so reset owns the complete data
+   * lifecycle. Omitted for backward-compatible Avatanel workspace routing.
+   */
+  auditDir?: string;
+}
+
+export function resolveUnifiedAuditDir(
+  input: Pick<UnifiedTurnExtractionInput, 'auditDir' | 'workspace' | 'userId'>,
+): string {
+  if (input.auditDir) return input.auditDir;
+  return input.workspace
+    ? auditLogDir(input.workspace.layout.root)
+    : join(
+        homedir(),
+        '.avatanel',
+        '.unified-extraction-log',
+        input.userId.replace(/[^a-zA-Z0-9._-]/g, '_'),
+      );
 }
 
 export async function runUnifiedTurnExtraction(input: UnifiedTurnExtractionInput): Promise<void> {
@@ -82,14 +102,7 @@ export async function runUnifiedTurnExtraction(input: UnifiedTurnExtractionInput
     return;
   }
 
-  const auditDir = input.workspace
-    ? auditLogDir(input.workspace.layout.root)
-    : join(
-        homedir(),
-        '.avatanel',
-        '.unified-extraction-log',
-        input.userId.replace(/[^a-zA-Z0-9._-]/g, '_'),
-      );
+  const auditDir = resolveUnifiedAuditDir(input);
 
   await routeUnifiedExtraction(result.payload, {
     memory: input.memory,
