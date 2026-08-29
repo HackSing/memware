@@ -2,6 +2,11 @@
   "name": "memware-linux-x64",
   "version": "0.1.0",
   "description": "memware prebuilt self-contained binary for linux-x64.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HackSing/memware.git"
+  },
   "os": [
     "linux"
   ],
@@ -9,6 +14,7 @@
     "x64"
   ],
   "files": [
+    "LICENSE",
     "memware"
   ]
 }

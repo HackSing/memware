@@ -2,11 +2,20 @@
   "name": "memware",
   "version": "0.1.0",
   "description": "memware — portable memory kernel for AI agents (MCP stdio server + Claude Code hook). Ships prebuilt self-contained binaries via platform subpackages.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HackSing/memware.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HackSing/memware/issues"
+  },
   "bin": {
     "memware": "bin/launcher.js"
   },
   "files": [
     "bin/launcher.js",
+    "LICENSE",
     "README.md",
     "templates/"
   ],

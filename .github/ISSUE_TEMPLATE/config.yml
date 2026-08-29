@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Q&A and showcase / 问答与案例
+    url: https://github.com/HackSing/memware/discussions
+    about: Ask questions, share tutorials, and show real use cases / 提问、分享教程和展示真实案例
+  - name: Private security report / 私密安全报告
+    url: https://github.com/HackSing/memware/security/advisories/new
+    about: Do not disclose vulnerabilities or sensitive data in public issues / 不要在公开 Issue 中披露漏洞或敏感数据

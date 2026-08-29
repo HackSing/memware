@@ -1,0 +1,162 @@
+{
+  "project": "memware",
+  "repository": "https://github.com/HackSing/memware",
+  "tagline": {
+    "en": "Give AI agents long-term memory without making users repeat themselves.",
+    "zh": "让 AI Agent 记住用户，而不是让用户反复介绍自己。"
+  },
+  "summary": {
+    "en": "memware is a local-first long-term memory layer for MCP-compatible agents. It distills conversations into durable, searchable memory and recalls relevant context in later tasks. Memory stays on the user's machine, while extraction and embedding use the OpenAI-compatible model endpoint the user chooses.",
+    "zh": "memware 是面向 MCP 兼容 Agent 的本地优先长期记忆层。它把对话提炼为持久、可搜索的记忆，并在后续任务中召回相关上下文。记忆保存在用户自己的设备上，提取与向量化使用用户选择的 OpenAI 兼容模型接口。"
+  },
+  "status": {
+    "phase": "pre-release",
+    "sourceReady": true,
+    "localBinaryBuildReady": true,
+    "npmPublished": false,
+    "githubReleasePublished": false
+  },
+  "benefits": [
+    {
+      "title": { "en": "Automatic writes", "zh": "自动写入" },
+      "body": {
+        "en": "A Claude Code Stop Hook captures each completed turn, so persistence does not depend on the model remembering to call a tool.",
+        "zh": "Claude Code Stop Hook 在每轮结束后自动捕获对话，不依赖模型记得调用写入工具。"
+      }
+    },
+    {
+      "title": { "en": "On-demand recall", "zh": "按需召回" },
+      "body": {
+        "en": "Seven MCP tools cover status, warmup, context retrieval, processing, search, archive, and reset.",
+        "zh": "7 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、归档与重置。"
+      }
+    },
+    {
+      "title": { "en": "User-owned storage", "zh": "用户持有数据" },
+      "body": {
+        "en": "Structured memory, vector indexes, and audit logs live under a local data directory.",
+        "zh": "结构化记忆、向量索引和审计日志都保存在本地数据目录。"
+      }
+    },
+    {
+      "title": { "en": "Provider choice", "zh": "模型服务可替换" },
+      "body": {
+        "en": "Extraction and embeddings use configurable OpenAI-compatible endpoints instead of a single locked provider.",
+        "zh": "提取与 Embedding 使用可配置的 OpenAI 兼容接口，不绑定单一模型供应商。"
+      }
+    }
+  ],
+  "platforms": [
+    {
+      "name": { "en": "Apple Silicon macOS", "zh": "Apple Silicon macOS" },
+      "binary": "memware-darwin-arm64"
+    },
+    {
+      "name": { "en": "Linux x64", "zh": "Linux x64" },
+      "binary": "memware-linux-x64"
+    }
+  ],
+  "useCases": [
+    {
+      "name": { "en": "Long-running coding partnership", "zh": "长期结对开发" },
+      "result": {
+        "en": "Keep project constraints, personal preferences, and prior decisions available across sessions.",
+        "zh": "跨会话保留项目约束、个人偏好与历史决策。"
+      }
+    },
+    {
+      "name": { "en": "Multi-session work", "zh": "多会话任务" },
+      "result": {
+        "en": "Recover relevant context in a new session instead of restating the same background.",
+        "zh": "新会话能够找回相关上下文，减少重复说明。"
+      }
+    },
+    {
+      "name": { "en": "Multi-user agents", "zh": "多用户 Agent" },
+      "result": {
+        "en": "Use userId to isolate memory spaces for different users.",
+        "zh": "通过 userId 隔离不同用户的记忆空间。"
+      }
+    },
+    {
+      "name": { "en": "Local-first workflows", "zh": "本地优先工作流" },
+      "result": {
+        "en": "Let users search, audit, and erase the memory they own.",
+        "zh": "让用户搜索、审计并删除自己持有的记忆。"
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "available": { "en": "MCP stdio server with seven memory tools", "zh": "MCP stdio 服务与 7 个记忆工具" },
+      "notAvailable": { "en": "Windows prebuilt binary", "zh": "Windows 预构建二进制" }
+    },
+    {
+      "available": { "en": "Claude Code Stop Hook for automatic writes", "zh": "Claude Code Stop Hook 自动写入" },
+      "notAvailable": { "en": "Hosted cloud sync or a team admin console", "zh": "托管式云同步与团队后台" }
+    },
+    {
+      "available": { "en": "Local builds for macOS arm64 and Linux x64", "zh": "macOS arm64、Linux x64 本地构建" },
+      "notAvailable": { "en": "Public npm and GitHub Release distribution", "zh": "npm 与 GitHub Release 公开分发" }
+    },
+    {
+      "available": { "en": "Local SQLite, vector indexes, and audit logs", "zh": "本地 SQLite、向量索引与审计日志" },
+      "notAvailable": { "en": "A non-technical visual memory manager", "zh": "面向非技术用户的可视化管理界面" }
+    }
+  ],
+  "documents": [
+    {
+      "label": { "en": "Usage reference", "zh": "完整使用文档" },
+      "path": "packages/memware/README.md",
+      "description": { "en": "tools, configuration, data, and troubleshooting", "zh": "工具、配置、数据与排障" }
+    },
+    {
+      "label": { "en": "Content operations (Chinese)", "zh": "内容运营手册" },
+      "path": "docs/CONTENT_OPERATIONS.md",
+      "description": { "en": "positioning, cadence, evidence gates, and metrics", "zh": "定位、节奏、证据门槛与指标" }
+    },
+    {
+      "label": { "en": "Contributing", "zh": "贡献指南" },
+      "path": "CONTRIBUTING.md",
+      "description": { "en": "issues, discussions, content, and code changes", "zh": "Issue、讨论、内容与代码贡献" }
+    },
+    {
+      "label": { "en": "Security policy", "zh": "安全策略" },
+      "path": "SECURITY.md",
+      "description": { "en": "supported state and private vulnerability reporting", "zh": "支持范围与私密漏洞报告" }
+    },
+    {
+      "label": { "en": "Changelog", "zh": "变更记录" },
+      "path": "CHANGELOG.md",
+      "description": { "en": "user-visible changes and release state", "zh": "用户可感知变化与发布状态" }
+    }
+  ],
+  "repositoryLayout": [
+    {
+      "path": "src/memware/",
+      "role": { "en": "CLI serve and hook modes", "zh": "serve 与 hook 两种 CLI 模式" }
+    },
+    {
+      "path": "src/agent/memory/",
+      "role": { "en": "extraction, routing, storage, and vector search kernel", "zh": "提取、路由、存储与向量搜索内核" }
+    },
+    {
+      "path": "packages/",
+      "role": { "en": "npm main package and platform binary packages", "zh": "npm 主包与平台二进制包" }
+    },
+    {
+      "path": "scripts/",
+      "role": { "en": "build, packaging, and content consistency tools", "zh": "构建、打包与内容一致性工具" }
+    },
+    {
+      "path": "tests/",
+      "role": { "en": "MCP, Hook, and memory-kernel tests", "zh": "MCP、Hook 与记忆内核测试" }
+    }
+  ],
+  "license": {
+    "selected": true,
+    "name": "MIT",
+    "path": "LICENSE",
+    "copyright": "Copyright (c) 2026 Memware"
+  }
+}

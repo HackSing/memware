@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HackSing/memware.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HackSing/memware/issues"
+  },
   "description": "memware — single-source repo for the memory kernel (src/agent/memory/) and the publishable npm units (packages/). Build with Bun.",
   "exports": {
     "./memory/*": "./src/agent/memory/*.ts",
@@ -12,6 +20,8 @@
   "scripts": {
     "test": "bun test tests/memware/ tests/unified-memory/",
     "typecheck": "bunx tsc --noEmit",
+    "content:write": "bun scripts/render-readme.ts --write",
+    "content:check": "bun scripts/render-readme.ts --check && bun scripts/content-check.ts",
     "memware:serve": "bun src/memware/main.ts serve",
     "memware:build": "bun scripts/memware-build.ts",
     "memware:pack": "bun scripts/memware-pack.ts"

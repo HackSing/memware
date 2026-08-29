@@ -1,44 +1,131 @@
+<!-- Generated from docs/content/readme-content.json by scripts/render-readme.ts. Do not edit directly. -->
+
 # memware
 
-**Long-term memory for any MCP-compatible agent**, shipped as a self-contained
-single-file binary. Point it at an OpenAI-compatible LLM endpoint and it
-distills each conversation turn into durable, searchable memory of your user —
-stored entirely on the local machine.
+[简体中文](README.zh-CN.md)
 
-```sh
-claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware serve
+**Give AI agents long-term memory without making users repeat themselves.**
+
+memware is a local-first long-term memory layer for MCP-compatible agents. It distills conversations into durable, searchable memory and recalls relevant context in later tasks. Memory stays on the user's machine, while extraction and embedding use the OpenAI-compatible model endpoint the user chooses.
+
+> **Status: pre-release.** Source, tests, and local binary builds are available. The npm package and GitHub Release are not public yet, so use the source path below today. `npx memware` will become available with the first public release.
+
+## Why memware
+
+- **Automatic writes**: A Claude Code Stop Hook captures each completed turn, so persistence does not depend on the model remembering to call a tool.
+- **On-demand recall**: Seven MCP tools cover status, warmup, context retrieval, processing, search, archive, and reset.
+- **User-owned storage**: Structured memory, vector indexes, and audit logs live under a local data directory.
+- **Provider choice**: Extraction and embeddings use configurable OpenAI-compatible endpoints instead of a single locked provider.
+
+```mermaid
+flowchart LR
+    A[User talks with an agent] --> B[Stop Hook captures the turn]
+    B --> C[Extract durable facts and preferences]
+    C --> D[(Local memory store)]
+    E[New user request] --> F[MCP recall on demand]
+    D --> F
+    F --> G[Response grounded in prior context]
 ```
 
-Full usage docs (the seven MCP tools, Claude Code Stop-hook automation,
-environment variables, troubleshooting):
-[`packages/memware/README.md`](packages/memware/README.md).
+## Try it today
 
-## Repository layout
+The current source path requires [Bun](https://bun.sh), Claude Code, and an API key for an OpenAI-compatible endpoint.
 
-| Path | What it is |
-| --- | --- |
-| `src/memware/` | The CLI: `serve` (MCP stdio server) and `hook` (Claude Code Stop hook) modes |
-| `src/agent/memory/` | The memory kernel (extraction, routing, storage, vector search) |
-| `packages/memware/` | npm main package — dependency-free Node launcher + docs + templates |
-| `packages/memware-<os>-<arch>/` | npm platform subpackages carrying the prebuilt binaries |
-| `scripts/memware-build.ts` | Cross-platform `bun build --compile` matrix (`MEMWARE_TARGETS` is the single source of truth) |
-| `scripts/memware-pack.ts` | npm tarball packing for the main + platform packages |
-| `tests/memware/` | Protocol-level and hook-mode tests (Bun test) |
-
-## Develop
-
-Requires [Bun](https://bun.sh).
+### 1. Clone, verify, and build
 
 ```sh
+git clone https://github.com/HackSing/memware.git
+cd memware
 bun install
-bun run test           # tests/memware
-bun run typecheck      # tsc --noEmit
-bun run memware:build  # compile darwin-arm64 + linux-x64 binaries into dist/memware/
-bun run memware:pack   # write npm tarballs into dist/memware/
+bun run test
+bun run typecheck
+bun run memware:build
 ```
 
-## Origin
+### 2. Register the MCP server
 
-The memory kernel was extracted from the avatanel project's local memory
-system (`src/agent/memory`), decoupled so it runs with no avatanel source tree
-and no Bun on the end user's machine.
+Apple Silicon macOS:
+
+```sh
+claude mcp add memware \
+  -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-darwin-arm64" serve
+```
+
+Linux x64:
+
+```sh
+claude mcp add memware \
+  -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-linux-x64" serve
+```
+
+Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension.
+
+### 3. Enable automatic memory
+
+Merge [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) into the Claude Code settings, then add [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) to the project's `CLAUDE.md`. See the [usage reference](packages/memware/README.md) for configuration, all seven tools, and troubleshooting.
+
+After the first npm release, installation will become:
+
+```sh
+claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve
+```
+
+## Use cases
+
+| Use case | User result |
+| --- | --- |
+| Long-running coding partnership | Keep project constraints, personal preferences, and prior decisions available across sessions. |
+| Multi-session work | Recover relevant context in a new session instead of restating the same background. |
+| Multi-user agents | Use userId to isolate memory spaces for different users. |
+| Local-first workflows | Let users search, audit, and erase the memory they own. |
+
+memware is not a chat-history sync service, and it does not mean raw conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure. Choose that provider and deployment according to the sensitivity of your data.
+
+## Product boundaries
+
+| Available | Not yet available |
+| --- | --- |
+| MCP stdio server with seven memory tools | Windows prebuilt binary |
+| Claude Code Stop Hook for automatic writes | Hosted cloud sync or a team admin console |
+| Local builds for macOS arm64 and Linux x64 | Public npm and GitHub Release distribution |
+| Local SQLite, vector indexes, and audit logs | A non-technical visual memory manager |
+
+## Documentation
+
+- [Usage reference](packages/memware/README.md): tools, configuration, data, and troubleshooting
+- [Content operations (Chinese)](docs/CONTENT_OPERATIONS.md): positioning, cadence, evidence gates, and metrics
+- [Contributing](CONTRIBUTING.md): issues, discussions, content, and code changes
+- [Security policy](SECURITY.md): supported state and private vulnerability reporting
+- [Changelog](CHANGELOG.md): user-visible changes and release state
+
+## Participate and stay updated
+
+Use the entry point that matches the task:
+
+- Report a reproducible problem with the [Bug form](https://github.com/HackSing/memware/issues/new?template=bug_report.yml).
+- Propose a new product outcome with the [Feature request form](https://github.com/HackSing/memware/issues/new?template=feature_request.yml).
+- Report missing or misleading docs with the [Documentation form](https://github.com/HackSing/memware/issues/new?template=documentation_report.yml).
+- Share use cases, tutorials, and questions in [Discussions](https://github.com/HackSing/memware/discussions).
+- Use GitHub **Watch → Custom → Releases** to receive meaningful release updates.
+
+## Development
+
+| Path | Responsibility |
+| --- | --- |
+| `src/memware/` | CLI serve and hook modes |
+| `src/agent/memory/` | extraction, routing, storage, and vector search kernel |
+| `packages/` | npm main package and platform binary packages |
+| `scripts/` | build, packaging, and content consistency tools |
+| `tests/` | MCP, Hook, and memory-kernel tests |
+
+```sh
+bun run test
+bun run typecheck
+bun run content:check
+bun run memware:build
+bun run memware:pack
+```
+
+memware is open-source software licensed under the [MIT License](LICENSE). Copyright (c) 2026 Memware.

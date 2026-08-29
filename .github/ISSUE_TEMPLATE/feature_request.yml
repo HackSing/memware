@@ -1,0 +1,57 @@
+name: Feature request / 功能建议
+description: Propose a user outcome, capability, or experience improvement / 提交新的用户场景、能力需求或体验优化建议
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: user_problem
+    attributes:
+      label: User problem / 用户问题
+      description: Who has what problem in which situation? Start with the problem, not only a solution. / 谁在什么场景下遇到了什么问题？请先描述问题。
+      placeholder: 作为……，当我……时，我需要……，否则……
+    validations:
+      required: true
+  - type: textarea
+    id: current_workaround
+    attributes:
+      label: Current workaround / 当前替代方案
+      description: How do you work around it today, and what does that cost? / 现在如何绕过？成本或风险是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome and success criteria / 期望结果与成功标准
+      placeholder: 完成后，用户可以……；可通过……验证。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Optional proposal / 可选方案
+      description: Share an idea if you have one; implementation details are not required. / 如有想法可填写，不要求技术实现。
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 影响范围
+      options:
+        - Installation and onboarding / 安装与首次体验
+        - Memory write and extraction / 记忆写入与提取
+        - Recall and search / 记忆召回与搜索
+        - Data, privacy, and deletion / 数据、隐私与删除
+        - MCP and agent compatibility / MCP 与 Agent 兼容性
+        - Documentation and content / 文档与内容
+        - Platform and distribution / 平台与分发
+        - Other / 其他
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks / 提交前确认
+      options:
+        - label: I searched existing issues and found no duplicate. / 我已搜索现有 Issue，未发现相同需求。
+          required: true
+        - label: I did not include secrets, user memory, or other sensitive data. / 我没有包含密钥、用户记忆或其他敏感信息。
+          required: true

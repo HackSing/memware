@@ -1,0 +1,47 @@
+name: Documentation report / 文档问题
+description: Report missing, incorrect, or misleading documentation / 报告缺失、错误或误导性文档
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Discussions for tutorials, showcases, and questions. This form is for actionable documentation corrections.
+        教程、案例展示和问答请进入 Discussions；此表单只处理可执行的文档修正。
+  - type: input
+    id: location
+    attributes:
+      label: Location / 位置
+      description: Link, file, or section name / 链接、文件或章节名
+      placeholder: README.md — Try it today
+    validations:
+      required: true
+  - type: textarea
+    id: user_goal
+    attributes:
+      label: User goal / 用户目标
+      description: What were you trying to accomplish? / 你原本想完成什么任务？
+    validations:
+      required: true
+  - type: textarea
+    id: current_problem
+    attributes:
+      label: Current problem / 当前问题
+      description: What is missing, incorrect, or misleading? / 哪些内容缺失、错误或容易误导？
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and suggested correction / 证据与建议修正
+      description: Include reproducible commands or authoritative references when possible / 尽量提供可复现命令或权威依据
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy check / 隐私确认
+      options:
+        - label: I removed API keys, real memory data, private conversations, and personal information. / 我已删除 API Key、真实记忆、私密对话和个人信息。
+          required: true

@@ -7,6 +7,11 @@ durable, searchable memory of your user — stored entirely on the local machine
 The first target is [Claude Code](https://docs.claude.com/en/docs/claude-code),
 but any [MCP](https://modelcontextprotocol.io) client can use it.
 
+> **Pre-release status.** The source, tests, and local binary build are ready,
+> but `memware` is not yet available from the public npm registry and there is
+> no public GitHub Release. Use the source build below today. The `npx` command
+> is the installation path for the first public release.
+
 It runs in two modes:
 
 - `memware serve` — an MCP stdio server exposing seven memory tools.
@@ -33,13 +38,41 @@ defaults to `MEMWARE_USER_ID` (or `default`).
 > does the writing. The read tools (`memory_warmup`, `memory_get_context`,
 > `memory_search`) are what the model uses during a conversation.
 
-## Install (Claude Code)
+## Try from source today
+
+This path requires [Bun](https://bun.sh):
+
+```sh
+git clone https://github.com/HackSing/memware.git
+cd memware
+bun install
+bun run test
+bun run typecheck
+bun run memware:build
+```
+
+Register the binary that matches your platform:
+
+```sh
+# Apple Silicon macOS
+claude mcp add memware -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-darwin-arm64" serve
+
+# Linux x64
+claude mcp add memware -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-linux-x64" serve
+```
+
+Call `memory_status` to confirm the server is available, then configure the
+recommended Stop hook below.
+
+## Install after the first npm release (Claude Code)
 
 memware installs as a standard [MCP server](https://modelcontextprotocol.io) via
 `npx`. One command registers it:
 
 ```sh
-claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware serve
+claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve
 ```
 
 The `memware` package carries no binary itself; the prebuilt executable for your
@@ -215,3 +248,8 @@ binary. Windows is not yet supported.
   2. The Stop hook block in `~/.claude/settings.json` matches the template above.
   3. Run with `MEMWARE_DEBUG=1` and watch stderr — hook skips are logged as
      `[memware hook] skipped (<reason>)` with the underlying cause.
+
+## License
+
+memware is open-source software licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 Memware.

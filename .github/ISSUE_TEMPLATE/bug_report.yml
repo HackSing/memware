@@ -1,0 +1,77 @@
+name: Bug report / 缺陷报告
+description: Report a reproducible installation, runtime, memory, or compatibility problem / 报告可复现的安装、运行、记忆或兼容性问题
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Remove API keys, real memory data, raw conversations, and personal paths first.
+        感谢反馈。请先删除日志中的 API Key、真实用户记忆、原始对话和个人路径。
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 问题描述
+      description: What happened, and how did it affect the task? / 发生了什么？对你的任务造成了什么影响？
+      placeholder: 在……时，memware……，导致……
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode / 运行模式
+      options:
+        - serve (MCP server / MCP 服务)
+        - hook (Stop Hook)
+        - build / pack
+        - Other / 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit / 版本或 Commit
+      placeholder: 0.1.0 或 4427297
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: OS, CPU, Bun/Node/Claude Code versions, and model-provider type; never include secrets / 操作系统、CPU、相关版本和模型服务类型；不要填写密钥
+      placeholder: macOS 15, arm64, Bun 1.x, Claude Code x.x, OpenAI-compatible endpoint
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction / 最小复现步骤
+      placeholder: |
+        1. 运行……
+        2. 调用……
+        3. 观察到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result / 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and redacted logs / 实际结果与脱敏日志
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Submission checks / 提交前确认
+      options:
+        - label: I searched existing issues and found no duplicate. / 我已搜索现有 Issue，未发现相同问题。
+          required: true
+        - label: I removed secrets, real memory data, raw conversations, and personal information. / 我已删除密钥、真实记忆、原始对话和个人信息。
+          required: true

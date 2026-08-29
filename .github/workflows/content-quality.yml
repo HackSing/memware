@@ -1,0 +1,56 @@
+name: Content quality
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "README.zh-CN.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - ".github/**"
+      - "scripts/render-readme.ts"
+      - "scripts/content-check.ts"
+      - "package.json"
+      - "bun.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "README.zh-CN.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - ".github/**"
+      - "scripts/render-readme.ts"
+      - "scripts/content-check.ts"
+      - "package.json"
+      - "bun.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: content-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out trusted repository content
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify generated bilingual content and governance files
+        run: bun run content:check
