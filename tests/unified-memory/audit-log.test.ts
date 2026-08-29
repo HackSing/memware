@@ -58,6 +58,16 @@ console.log('--- Test 2: untrusted event timestamps cannot select an audit path 
   assert(!existsSync(join(dir, '..', 'outside.jsonl')), 'path traversal did not create an outside file');
 }
 
+console.log('--- Test 2b: private permissions are the default ---');
+{
+  const dir = mkdtempSync(join(tmpdir(), 'audit-default-private-'));
+  const w = new AuditLogWriter(dir);
+  w.append(fixture);
+  const path = join(dir, `${new Date().toISOString().slice(0, 10)}.jsonl`);
+  assert((statSync(dir).mode & 0o777) === 0o700, 'default audit directory is 0700');
+  assert((statSync(path).mode & 0o777) === 0o600, 'default audit file is 0600');
+}
+
 console.log('--- Test 3: append() never throws on disk error ---');
 {
   const w = new AuditLogWriter('/etc/avatanel-audit-test-cannot-write');

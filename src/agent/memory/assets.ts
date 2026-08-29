@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import type { ContentBlock, ImageContent } from "./contentBlocks";
 import { TEXT_MEMORY_RELATION_EXTRACTOR_VERSION } from "./relationProjection";
@@ -210,8 +210,10 @@ export class MemoryAssetStore {
 
       const filePath = this.assetFilePath(input.userId, sha256, decoded.mediaType);
       if (!existsSync(filePath)) {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, decoded.bytes);
+        mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+        chmodSync(dirname(filePath), 0o700);
+        writeFileSync(filePath, decoded.bytes, { mode: 0o600 });
+        chmodSync(filePath, 0o600);
       }
 
       const now = new Date().toISOString();
@@ -293,8 +295,10 @@ export class MemoryAssetStore {
 
     const filePath = this.assetFilePath(input.userId, sha256, mimeType);
     if (!existsSync(filePath)) {
-      mkdirSync(dirname(filePath), { recursive: true });
-      writeFileSync(filePath, bytes);
+      mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+      chmodSync(dirname(filePath), 0o700);
+      writeFileSync(filePath, bytes, { mode: 0o600 });
+      chmodSync(filePath, 0o600);
     }
 
     const now = new Date().toISOString();

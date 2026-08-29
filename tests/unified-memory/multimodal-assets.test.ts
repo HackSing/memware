@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { MemoryService } from '../../src/agent/memory/service';
 import { MemorySettings } from '../../src/agent/memory/config';
@@ -98,6 +98,14 @@ async function main(): Promise<void> {
   assert(captured.captured.length === 4, 'captures first 4 images in one turn');
   assert(captured.skipped.length === 1 && captured.skipped[0]?.reason === 'max_images_per_turn_exceeded', 'skips images over per-turn limit');
   assert(captured.captured.every((item) => existsSync(item.asset.file_path)), 'captured images are written to disk');
+  assert(
+    captured.captured.every((item) => (statSync(item.asset.file_path).mode & 0o777) === 0o600),
+    'captured image files are private 0600',
+  );
+  assert(
+    captured.captured.every((item) => (statSync(dirname(item.asset.file_path)).mode & 0o777) === 0o700),
+    'captured image directories are private 0700',
+  );
   assert(svc.listMemoryAssets({ userId }).length === 4, 'four unique assets are visible');
 
   console.log('--- size limit writes audit only ---');

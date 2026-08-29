@@ -85,19 +85,20 @@ export class AuditLogWriter {
 
   append(entry: AuditLogEntry): void {
     try {
+      const privateMode = this.options.privateMode !== false;
       if (!this.dirEnsured) {
         mkdirSync(this.baseDir, {
           recursive: true,
-          ...(this.options.privateMode ? { mode: 0o700 } : {}),
+          ...(privateMode ? { mode: 0o700 } : {}),
         });
-        if (this.options.privateMode) chmodSync(this.baseDir, 0o700);
+        if (privateMode) chmodSync(this.baseDir, 0o700);
         this.dirEnsured = true;
       }
       // File routing must use a local trusted clock, never model-controlled
       // event.ts. The event timestamp remains inside the JSON payload for audit.
       const date = new Date().toISOString().slice(0, 10);
       const path = join(this.baseDir, `${date}.jsonl`);
-      if (this.options.privateMode) {
+      if (privateMode) {
         const dir = lstatSync(this.baseDir);
         if (dir.isSymbolicLink() || !dir.isDirectory()) throw new Error('unsafe private audit directory');
         const fd = openSync(
