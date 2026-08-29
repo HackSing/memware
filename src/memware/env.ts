@@ -15,6 +15,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_CONFIG } from "../agent/memory/config";
 
 /** memware-owned default data root. Independent of avatanel's ~/.avatanel. */
 export function defaultDataDir(): string {
@@ -48,6 +49,10 @@ export interface MemwareEnv {
   embeddingModel?: string;
   /** MEMWARE_EMBEDDING_DIM — optional embedding vector dimension. */
   embeddingDim?: number;
+  /** MEMWARE_EMBEDDING_BASE_URL — optional separate embedding endpoint. */
+  embeddingBaseUrl?: string;
+  /** MEMWARE_EMBEDDING_API_KEY — credential for a separate embedding endpoint. */
+  embeddingApiKey?: string;
   /** MEMWARE_DATA_DIR — storage root (default ~/.memware). */
   dataDir: string;
   /** MEMWARE_USER_ID — default user id (default "default"). */
@@ -61,6 +66,84 @@ function readOptional(source: NodeJS.ProcessEnv, key: string): string | undefine
   if (raw === undefined) return undefined;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readEndpoint(source: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = readOptional(source, key);
+  if (value === undefined) return undefined;
+  validateEndpoint(value, key);
+  return value;
+}
+
+function validateEndpoint(value: string, key: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new MemwareConfigError(`${key} must be an absolute URL`);
+  }
+
+  if (url.username || url.password) {
+    throw new MemwareConfigError(`${key} must not contain URL credentials`);
+  }
+  if (url.hash) {
+    throw new MemwareConfigError(`${key} must not contain a URL fragment`);
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new MemwareConfigError(`${key} must use HTTP or HTTPS`);
+  }
+  return url;
+}
+
+/** Effective, validated model transport settings used to construct clients. */
+export interface EffectiveModelRuntimeConfig {
+  apiKey: string;
+  baseUrl: string;
+  model?: string;
+  embeddingModel?: string;
+  embeddingDim?: number;
+  embeddingBaseUrl: string;
+  embeddingApiKey: string;
+  endpointSource: "builtin-default" | "memware-env";
+  chatEndpointOrigin: string;
+  embeddingEndpointOrigin: string;
+  embeddingUsesSeparateCredential: boolean;
+}
+
+/**
+ * Resolve every model channel before client construction. A primary API key
+ * may be reused only within the same network origin; a distinct embedding
+ * origin requires an explicitly supplied credential.
+ */
+export function resolveModelRuntimeConfig(env: MemwareEnv): EffectiveModelRuntimeConfig {
+  const baseUrl = env.baseUrl ?? DEFAULT_CONFIG.model.base_url;
+  const embeddingBaseUrl = env.embeddingBaseUrl ?? baseUrl;
+  const chatUrl = validateEndpoint(baseUrl, "MEMWARE_BASE_URL");
+  const embeddingUrl = validateEndpoint(embeddingBaseUrl, "MEMWARE_EMBEDDING_BASE_URL");
+
+  if (chatUrl.origin !== embeddingUrl.origin && !env.embeddingApiKey) {
+    throw new MemwareConfigError(
+      "MEMWARE_EMBEDDING_API_KEY is required when MEMWARE_EMBEDDING_BASE_URL uses a different origin",
+    );
+  }
+
+  return {
+    apiKey: env.apiKey,
+    baseUrl,
+    ...(env.model !== undefined ? { model: env.model } : {}),
+    ...(env.embeddingModel !== undefined ? { embeddingModel: env.embeddingModel } : {}),
+    ...(env.embeddingDim !== undefined ? { embeddingDim: env.embeddingDim } : {}),
+    embeddingBaseUrl,
+    embeddingApiKey: env.embeddingApiKey ?? env.apiKey,
+    endpointSource:
+      env.baseUrl !== undefined || env.embeddingBaseUrl !== undefined
+        ? "memware-env"
+        : "builtin-default",
+    chatEndpointOrigin: chatUrl.origin,
+    embeddingEndpointOrigin: embeddingUrl.origin,
+    embeddingUsesSeparateCredential: env.embeddingApiKey !== undefined,
+  };
 }
 
 function readDim(source: NodeJS.ProcessEnv): number | undefined {
@@ -90,14 +173,19 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): MemwareEnv {
         "  claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware serve",
     );
   }
-  return {
+  const env: MemwareEnv = {
     apiKey,
-    baseUrl: readOptional(source, "MEMWARE_BASE_URL"),
+    baseUrl: readEndpoint(source, "MEMWARE_BASE_URL"),
     model: readOptional(source, "MEMWARE_MODEL"),
     embeddingModel: readOptional(source, "MEMWARE_EMBEDDING_MODEL"),
     embeddingDim: readDim(source),
+    embeddingBaseUrl: readEndpoint(source, "MEMWARE_EMBEDDING_BASE_URL"),
+    embeddingApiKey: readOptional(source, "MEMWARE_EMBEDDING_API_KEY"),
     dataDir: readOptional(source, "MEMWARE_DATA_DIR") ?? defaultDataDir(),
     defaultUserId: readOptional(source, "MEMWARE_USER_ID") ?? DEFAULT_USER_ID,
     debug: source.MEMWARE_DEBUG === "1" || source.MEMWARE_DEBUG === "true",
   };
+  // Validate cross-channel endpoint/key policy before the first tool call.
+  resolveModelRuntimeConfig(env);
+  return env;
 }

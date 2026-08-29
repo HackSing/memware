@@ -11,7 +11,7 @@
 
 import type { IMemoryService } from "../agent/memory/types";
 import { createMemoryService } from "../agent/memory/adapter";
-import type { MemwareEnv } from "./env";
+import { resolveModelRuntimeConfig, type MemwareEnv } from "./env";
 import { userStorePaths } from "./paths";
 import { ensureSqlitePragmas } from "./sqlitePragmas";
 
@@ -24,17 +24,20 @@ export type MemoryServiceFactory = (userId: string) => Promise<IMemoryService>;
  * are forwarded, so unset ones fall back to DEFAULT_CONFIG inside the kernel.
  */
 export function createDefaultServiceFactory(env: MemwareEnv): MemoryServiceFactory {
+  const model = resolveModelRuntimeConfig(env);
   return async (userId: string): Promise<IMemoryService> => {
     const paths = userStorePaths(env.dataDir, userId);
     ensureSqlitePragmas(paths.dbPath);
     return createMemoryService({
       dbPath: paths.dbPath,
       vectorDbPath: paths.vectorDbPath,
-      ...(env.apiKey !== undefined ? { apiKey: env.apiKey } : {}),
-      ...(env.baseUrl !== undefined ? { baseUrl: env.baseUrl } : {}),
-      ...(env.model !== undefined ? { model: env.model } : {}),
-      ...(env.embeddingModel !== undefined ? { embeddingModel: env.embeddingModel } : {}),
-      ...(env.embeddingDim !== undefined ? { embeddingDim: env.embeddingDim } : {}),
+      apiKey: model.apiKey,
+      baseUrl: model.baseUrl,
+      ...(model.model !== undefined ? { model: model.model } : {}),
+      ...(model.embeddingModel !== undefined ? { embeddingModel: model.embeddingModel } : {}),
+      ...(model.embeddingDim !== undefined ? { embeddingDim: model.embeddingDim } : {}),
+      embeddingBaseUrl: model.embeddingBaseUrl,
+      embeddingApiKey: model.embeddingApiKey,
     });
   };
 }

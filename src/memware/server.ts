@@ -15,7 +15,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { MemwareEnv } from "./env";
+import { resolveModelRuntimeConfig, type MemwareEnv } from "./env";
 import type { MemoryRegistry } from "./memoryRegistry";
 import { userStorePaths } from "./paths";
 import { buildExtractionConfig, processTurn } from "./processTurn";
@@ -31,6 +31,7 @@ export function createMemwareServer(env: MemwareEnv, registry: MemoryRegistry): 
     { capabilities: { tools: {} } },
   );
   const extractionConfig = buildExtractionConfig(env);
+  const modelConfig = resolveModelRuntimeConfig(env);
   const uid = (userId?: string): string => userId ?? env.defaultUserId;
 
   server.registerTool(
@@ -45,6 +46,13 @@ export function createMemwareServer(env: MemwareEnv, registry: MemoryRegistry): 
         dataDir: env.dataDir,
         defaultUserId: user,
         storage: { dbPath: paths.dbPath, vectorDbPath: paths.vectorDbPath },
+        modelConfiguration: {
+          source: modelConfig.endpointSource,
+          projectConfigDiscovery: false,
+          chatEndpointOrigin: modelConfig.chatEndpointOrigin,
+          embeddingEndpointOrigin: modelConfig.embeddingEndpointOrigin,
+          embeddingUsesSeparateCredential: modelConfig.embeddingUsesSeparateCredential,
+        },
         runtime: memory.getRuntimeStatus?.() ?? { kind: "unknown" },
       });
     },

@@ -84,6 +84,13 @@ test("memory_status reports storage + runtime", async () => {
     expect(status.server).toBe("memware");
     expect(status.defaultUserId).toBe("default");
     expect(status.storage.dbPath).toContain("memory.db");
+    expect(status.modelConfiguration).toEqual({
+      source: "builtin-default",
+      projectConfigDiscovery: false,
+      chatEndpointOrigin: "https://api.siliconflow.cn",
+      embeddingEndpointOrigin: "https://api.siliconflow.cn",
+      embeddingUsesSeparateCredential: false,
+    });
     expect(status.runtime.persistent).toBe(true);
   } finally {
     await h.dispose();

@@ -31,4 +31,6 @@ os/cpu 解析平台子包并 spawn 二进制，不用 postinstall（npm RFC 0054
 
 配置只经 `MEMWARE_*` 环境变量注入（`src/memware/env.ts`），数据默认落 `~/.memware/<userId>/`
 （`src/memware/paths.ts`），与 avatanel 的 `~/.avatanel/` 完全隔离；不复制内核
-`DEFAULT_CONFIG` 的任何业务默认值。
+`DEFAULT_CONFIG` 的任何业务默认值。无参 `MemorySettings` 只加载内置默认值，memware 不自动读取
+项目目录中的 `memory-config.json` 或 `config/memory.json`；内核调用者如需文件配置，必须显式传入
+绝对路径。Chat 与 Embedding 使用不同 origin 时必须分别提供凭据。

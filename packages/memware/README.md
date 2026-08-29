@@ -102,15 +102,20 @@ claude mcp add memware -e MEMWARE_API_KEY=sk-... -- /absolute/path/to/memware se
 memware is configured **only** through `MEMWARE_*` environment variables — never
 a config file. Pass them with `-e` on `claude mcp add` (for the `serve` process),
 and export them in the environment Claude Code runs in (for the `hook` process —
-see [Claude Code hooks](#claude-code-hooks-recommended)).
+see [Claude Code hooks](#claude-code-hooks-recommended)). Project-local
+`memory-config.json` and `config/memory.json` files are deliberately ignored:
+a repository must not be able to choose the endpoint that receives your API key
+and conversation data.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `MEMWARE_API_KEY` | **yes** | — | OpenAI-compatible API key, used for both chat/extraction and embeddings. |
+| `MEMWARE_API_KEY` | **yes** | — | OpenAI-compatible API key, used for chat/extraction and, by default, embeddings on the same endpoint origin. |
 | `MEMWARE_MODEL` | no | kernel default | Chat/extractor model that distills each turn. Unset falls back to the kernel default model — set it explicitly whenever you override `MEMWARE_BASE_URL`. |
 | `MEMWARE_BASE_URL` | no | kernel default | OpenAI-compatible endpoint. |
 | `MEMWARE_EMBEDDING_MODEL` | no | kernel default | Embedding model for semantic search. |
 | `MEMWARE_EMBEDDING_DIM` | no | kernel default | Embedding vector dimension (positive integer). |
+| `MEMWARE_EMBEDDING_BASE_URL` | no | chat endpoint | Optional separate OpenAI-compatible embedding endpoint. |
+| `MEMWARE_EMBEDDING_API_KEY` | conditional | chat key | Required when the embedding endpoint uses a different origin; prevents sending the chat key to another service. |
 | `MEMWARE_DATA_DIR` | no | `~/.memware` | Storage root for all users' memory. |
 | `MEMWARE_USER_ID` | no | `default` | Default user id (used by the hook, and by tools when `userId` is omitted). |
 | `MEMWARE_DEBUG` | no | off | Set to `1` or `true` for verbose extraction diagnostics on stderr. |
@@ -122,6 +127,13 @@ kernel's built-in value. When `MEMWARE_BASE_URL` is unset, the kernel targets
 known-good pairing for that endpoint is `MEMWARE_MODEL=deepseek-ai/DeepSeek-V3.2`.
 Point `MEMWARE_BASE_URL` / `MEMWARE_MODEL` / `MEMWARE_EMBEDDING_MODEL` at any
 other OpenAI-compatible provider to use it instead.
+
+Model endpoints must be explicit HTTP or HTTPS URLs, including LAN-hosted
+OpenAI-compatible services. When Chat and Embedding use different origins,
+configure `MEMWARE_EMBEDDING_API_KEY`
+explicitly; memware fails before a network request rather than forwarding the
+primary key to a different origin. Call `memory_status` to inspect the effective
+endpoint origins and configuration source without exposing credentials.
 
 ## Claude Code hooks (recommended)
 
@@ -200,8 +212,27 @@ one directory per user id:
 
 ## Upgrade / uninstall
 
-**Upgrade.** `npx` caches packages, so `npx -y memware` can keep running an older
-cached version. To move to the latest:
+**Upgrade from a source checkout (current pre-release path).** Pull, re-verify,
+and rebuild in your clone:
+
+```sh
+cd memware
+git pull
+bun install
+bun run test && bun run typecheck
+bun run memware:build
+```
+
+The rebuild overwrites the same `dist/memware/<platform>` binary your
+`claude mcp add` command points to, so new Claude Code sessions pick it up
+automatically — no re-registration or hook changes needed. Your memory under
+`~/.memware/` (or `MEMWARE_DATA_DIR`) is never touched by an upgrade. See the
+[Changelog](../../CHANGELOG.md) for what changed; to roll back,
+`git checkout <commit>` and rebuild.
+
+**Upgrade once the npm package is public.** `npx` caches packages, so
+`npx -y memware` can keep running an older cached version. To move to the
+latest:
 
 - Pin the version in your `claude mcp` command, e.g. `npx -y memware@latest serve`
   (re-run `claude mcp add` to update it), or
@@ -213,7 +244,8 @@ cached version. To move to the latest:
 1. `claude mcp remove memware` — unregister the MCP server.
 2. Remove the memware Stop hook block from `~/.claude/settings.json`.
 3. `npm uninstall -g memware` if you installed it globally (npx users have
-   nothing to uninstall; optionally `npx clear-npx-cache`). Delete `~/.memware`
+   nothing to uninstall; optionally `npx clear-npx-cache`). Source-checkout
+   users simply delete the clone. Delete `~/.memware`
    (or `MEMWARE_DATA_DIR`) to erase all stored memory.
 
 ## Platform support
@@ -234,6 +266,9 @@ binary. Windows is not yet supported.
 - **`MEMWARE_API_KEY is required`** — the key is unset or empty. `serve` exits `1`
   with this message. In hook mode the same misconfiguration is logged to stderr
   and the hook exits `0` (the turn is silently dropped, never blocking the host).
+- **`MEMWARE_EMBEDDING_API_KEY is required`** — Chat and Embedding point to
+  different origins. Supply a separate embedding key or use the same origin for
+  both channels.
 - **Extraction warning / no memory written** — when `MEMWARE_BASE_URL` is
   overridden but `MEMWARE_MODEL` is left unset, memware prints
   `MEMWARE_MODEL is unset while MEMWARE_BASE_URL overrides the default endpoint`

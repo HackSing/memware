@@ -60,7 +60,7 @@ claude mcp add memware \
   -- "$PWD/dist/memware/memware-linux-x64" serve
 ```
 
-在 Claude Code 中调用 `memory_status` 验证服务状态。若使用自定义接口，还需配置 `MEMWARE_BASE_URL`、`MEMWARE_MODEL`、`MEMWARE_EMBEDDING_MODEL` 和对应的向量维度。
+在 Claude Code 中调用 `memory_status` 验证服务状态。若使用自定义接口，还需配置 `MEMWARE_BASE_URL`、`MEMWARE_MODEL`、`MEMWARE_EMBEDDING_MODEL` 和对应的向量维度。独立 Embedding 接口使用 `MEMWARE_EMBEDDING_BASE_URL`；跨 origin 时必须同时提供 `MEMWARE_EMBEDDING_API_KEY`。
 
 ### 3. 打开自动记忆
 
@@ -71,6 +71,22 @@ claude mcp add memware \
 ```sh
 claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve
 ```
+
+## 更新方式
+
+源码安装（当前）：
+
+```sh
+cd memware
+git pull
+bun install
+bun run test && bun run typecheck
+bun run memware:build
+```
+
+重新构建会覆盖 MCP 注册指向的 `dist/memware/<平台>` 二进制，新的 Claude Code 会话自动使用新版本——无需重跑 `claude mcp add`，也无需改动 hook 配置。更新不会触碰 `~/.memware/` 下的记忆数据。拉取前先看 [更新日志](CHANGELOG.md) 了解变更；需要回退时 `git checkout <commit>` 后重新构建即可，数据目录不受影响。
+
+首次 npm 发布后：`npx -y memware@latest serve` 总是解析到最新发布版（需要稳定时可用 `memware@<版本号>` 锁定）。
 
 ## 适合哪些场景
 

@@ -87,8 +87,8 @@ function render(language: Language): string {
 
   add(
     zh
-      ? "在 Claude Code 中调用 `memory_status` 验证服务状态。若使用自定义接口，还需配置 `MEMWARE_BASE_URL`、`MEMWARE_MODEL`、`MEMWARE_EMBEDDING_MODEL` 和对应的向量维度。"
-      : "Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension.",
+      ? "在 Claude Code 中调用 `memory_status` 验证服务状态。若使用自定义接口，还需配置 `MEMWARE_BASE_URL`、`MEMWARE_MODEL`、`MEMWARE_EMBEDDING_MODEL` 和对应的向量维度。独立 Embedding 接口使用 `MEMWARE_EMBEDDING_BASE_URL`；跨 origin 时必须同时提供 `MEMWARE_EMBEDDING_API_KEY`。"
+      : "Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension. Use `MEMWARE_EMBEDDING_BASE_URL` for a separate embedding endpoint and provide `MEMWARE_EMBEDDING_API_KEY` when it uses a different origin.",
     "",
     zh ? "### 3. 打开自动记忆" : "### 3. Enable automatic memory",
     "",
@@ -101,6 +101,26 @@ function render(language: Language): string {
     "```sh",
     "claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve",
     "```",
+    "",
+    zh ? "## 更新方式" : "## Updating",
+    "",
+    zh ? "源码安装（当前）：" : "Source install (current):",
+    "",
+    "```sh",
+    `cd ${content.project}`,
+    "git pull",
+    "bun install",
+    "bun run test && bun run typecheck",
+    "bun run memware:build",
+    "```",
+    "",
+    zh
+      ? "重新构建会覆盖 MCP 注册指向的 `dist/memware/<平台>` 二进制，新的 Claude Code 会话自动使用新版本——无需重跑 `claude mcp add`，也无需改动 hook 配置。更新不会触碰 `~/.memware/` 下的记忆数据。拉取前先看 [更新日志](CHANGELOG.md) 了解变更；需要回退时 `git checkout <commit>` 后重新构建即可，数据目录不受影响。"
+      : "Rebuilding overwrites the same `dist/memware/<platform>` binary your MCP registration points to, so new Claude Code sessions pick it up automatically — no need to re-run `claude mcp add` or change hook settings. Updates never touch the memory data under `~/.memware/`. Check the [Changelog](CHANGELOG.md) before pulling; to roll back, `git checkout <commit>` and rebuild — the data directory is unaffected.",
+    "",
+    zh
+      ? "首次 npm 发布后：`npx -y memware@latest serve` 总是解析到最新发布版（需要稳定时可用 `memware@<版本号>` 锁定）。"
+      : "After the first npm release, `npx -y memware@latest serve` always resolves the newest published version (pin with `memware@<version>` when you need stability).",
     "",
     zh ? "## 适合哪些场景" : "## Use cases",
     "",

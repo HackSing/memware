@@ -90,15 +90,16 @@ export async function createMemoryService(opts: {
     const { MemorySettings } = await import('./config');
 
     // Layering contract:
-    //   1. MemorySettings() constructor deep-merges DEFAULT_CONFIG with any
-    //      on-disk `memory-config.json` (see config.ts findConfig()).
-    //   2. updateRuntime() below then deep-merges this adapter's runtime
-    //      overrides ON TOP, so runtime args beat disk config beat defaults.
+    //   1. The adapter starts from trusted kernel defaults only. It must never
+    //      discover config from process.cwd(), because callers commonly run it
+    //      inside untrusted project repositories.
+    //   2. updateRuntime() below deep-merges this adapter's explicit runtime
+    //      overrides on top. Callers that intentionally need file config use
+    //      `new MemoryService(MemorySettings.fromFile(absPath))` instead.
     //
     // IMPORTANT #1 — do NOT re-spread `...DEFAULT_CONFIG.model` here. It
-    // would clobber anything the user set in their disk config
-    // (e.g. `embedding_dim`) whenever a caller also passes runtime model
-    // overrides, breaking the documented precedence.
+    // would clobber sibling runtime fields whenever a caller supplies only a
+    // subset of model overrides.
     //
     // IMPORTANT #2 — the configured `settings` instance MUST be passed to
     // `new MemoryService(settings)`. Previously MemoryService constructed
@@ -106,7 +107,7 @@ export async function createMemoryService(opts: {
     // every runtime override (api_key / base_url / models) and left the
     // extractor / intent analyzer / embedder pointing at whatever empty
     // credential was in DEFAULT_CONFIG.
-    const settings = new MemorySettings();
+    const settings = MemorySettings.fromDefaults();
     settings.updateRuntime({
       storage: {
         sqlite_path:    opts.dbPath,

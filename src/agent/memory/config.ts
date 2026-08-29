@@ -6,7 +6,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { MemoryConfig } from "./types";
 
 const ENV_PATTERN = /\$\{(\w+)(?::([^}]*))?\}/g;
@@ -130,12 +130,30 @@ export const DEFAULT_CONFIG: MemoryConfig = {
 export class MemorySettings {
   private data: MemoryConfig;
 
-  constructor(configPath?: string) {
-    const filePath = configPath ?? this.findConfig();
+  /**
+   * Build memory settings from trusted defaults or an explicitly selected
+   * config file. A no-argument construction intentionally never inspects
+   * process.cwd(): project content must not gain authority over model
+   * endpoints or credentials merely because the host runs inside that repo.
+   *
+   * The string overload remains for compatibility, but the path must be
+   * absolute so selecting a file is an explicit caller decision.
+   */
+  constructor(source: MemorySettingsSource = { kind: "defaults" }) {
+    const configPath =
+      typeof source === "string"
+        ? source
+        : source.kind === "explicit-file"
+          ? source.path
+          : undefined;
     let fileConfig: Record<string, unknown> = {};
 
-    if (existsSync(filePath)) {
-      const raw = JSON.parse(readFileSync(filePath, "utf-8"));
+    if (configPath !== undefined && !isAbsolute(configPath)) {
+      throw new Error("Memory config path must be absolute");
+    }
+
+    if (configPath !== undefined && existsSync(configPath)) {
+      const raw = JSON.parse(readFileSync(configPath, "utf-8"));
       fileConfig = walkInterpolate(raw) as Record<string, unknown>;
     }
 
@@ -145,15 +163,12 @@ export class MemorySettings {
     ) as unknown as MemoryConfig;
   }
 
-  private findConfig(): string {
-    const candidates = [
-      join(process.cwd(), "memory-config.json"),
-      join(process.cwd(), "config", "memory.json"),
-    ];
-    for (const p of candidates) {
-      if (existsSync(p)) return p;
-    }
-    return candidates[0];
+  static fromDefaults(): MemorySettings {
+    return new MemorySettings({ kind: "defaults" });
+  }
+
+  static fromFile(configPath: string): MemorySettings {
+    return new MemorySettings({ kind: "explicit-file", path: configPath });
   }
 
   get<K extends keyof MemoryConfig>(key: K): MemoryConfig[K] {
@@ -190,6 +205,11 @@ export class MemorySettings {
     ) as unknown as MemoryConfig;
   }
 }
+
+export type MemorySettingsSource =
+  | string
+  | { kind: "defaults" }
+  | { kind: "explicit-file"; path: string };
 
 /** Recursive partial — required for `updateRuntime` nested merges. */
 type DeepPartialMemoryConfig = {

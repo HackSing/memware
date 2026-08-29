@@ -27,6 +27,8 @@ Environment:
   MEMWARE_MODEL            Chat/extractor model name (default: kernel built-in).
   MEMWARE_EMBEDDING_MODEL  Embedding model name.
   MEMWARE_EMBEDDING_DIM    Embedding vector dimension.
+  MEMWARE_EMBEDDING_BASE_URL  Optional separate embedding endpoint.
+  MEMWARE_EMBEDDING_API_KEY   Required when embedding uses a different origin.
   MEMWARE_DATA_DIR         Storage root (default ~/.memware).
   MEMWARE_USER_ID          Default user id (default "default").`;
 

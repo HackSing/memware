@@ -60,7 +60,7 @@ claude mcp add memware \
   -- "$PWD/dist/memware/memware-linux-x64" serve
 ```
 
-Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension.
+Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension. Use `MEMWARE_EMBEDDING_BASE_URL` for a separate embedding endpoint and provide `MEMWARE_EMBEDDING_API_KEY` when it uses a different origin.
 
 ### 3. Enable automatic memory
 
@@ -71,6 +71,22 @@ After the first npm release, installation will become:
 ```sh
 claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve
 ```
+
+## Updating
+
+Source install (current):
+
+```sh
+cd memware
+git pull
+bun install
+bun run test && bun run typecheck
+bun run memware:build
+```
+
+Rebuilding overwrites the same `dist/memware/<platform>` binary your MCP registration points to, so new Claude Code sessions pick it up automatically — no need to re-run `claude mcp add` or change hook settings. Updates never touch the memory data under `~/.memware/`. Check the [Changelog](CHANGELOG.md) before pulling; to roll back, `git checkout <commit>` and rebuild — the data directory is unaffected.
+
+After the first npm release, `npx -y memware@latest serve` always resolves the newest published version (pin with `memware@<version>` when you need stability).
 
 ## Use cases
 
