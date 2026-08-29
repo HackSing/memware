@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
-import type { ContentBlock, ImageContent } from "../../types/message";
+import type { ContentBlock, ImageContent } from "./contentBlocks";
 import { TEXT_MEMORY_RELATION_EXTRACTOR_VERSION } from "./relationProjection";
 import { shaHex, stableId } from "./ids";
 import {

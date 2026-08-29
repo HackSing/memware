@@ -14,8 +14,7 @@
 
 import type { UnifiedMemoryExtraction } from './schema';
 import type { IMemoryService, MemoryCluster } from '../types';
-import type { WorkspaceManager } from '../../evolution/workspaceManager';
-import type { PendingWriter } from '../../evolution/types';
+import type { UnifiedPendingWriter, UnifiedWorkspaceSink } from './sinks';
 import { shaHex } from '../ids';
 import { AuditLogWriter, type RouteAction, type StructuredError } from './auditLog';
 import { makeProvenance } from '../provenance';
@@ -24,8 +23,8 @@ import { detectUserLanguage, languageProfileEvidence, normalizeUserLanguage } fr
 
 export interface RouteContext {
   memory: IMemoryService;
-  workspace: WorkspaceManager | null;
-  pendingWriter?: PendingWriter | null;
+  workspace: UnifiedWorkspaceSink | null;
+  pendingWriter?: UnifiedPendingWriter | null;
   userId: string;
   sessionId: string;
   turnIndex: number;
@@ -233,7 +232,7 @@ export async function routeUnifiedExtraction(
   }
 
   // ── routes.* (workspace) ──
-  const pendingWriter = ctx.pendingWriter ?? (ctx.workspace as PendingWriter | null);
+  const pendingWriter = ctx.pendingWriter ?? (ctx.workspace as UnifiedPendingWriter | null);
   if (pendingWriter) {
     if (ext.routes.pending_rules) {
       for (const r of ext.routes.pending_rules) {

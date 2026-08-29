@@ -1,0 +1,71 @@
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { AuditLogWriter, type AuditLogEntry, auditLogDir } from '../../src/agent/memory/unified/auditLog';
+
+let passed = 0, failed = 0;
+function assert(c: boolean, l: string): void { if (c) { console.log(`  ✅ ${l}`); passed++; } else { console.log(`  ❌ ${l}`); failed++; } }
+
+const fixture: AuditLogEntry = {
+  ts: '2026-04-18T12:00:00.000Z',
+  sessionId: 's-1',
+  turnIndex: 7,
+  userId: 'u-1',
+  userMessageDigest: 'sha256:abc',
+  payload: {
+    version: 'v1',
+    event: { ts: 't', summary: 's', confidence: 0.85, categories: ['memory'] },
+    facts: {},
+    routes: {},
+  },
+  actions: [
+    { kind: 'memory_cluster', detail: 'wrote 1' },
+    { kind: 'profile_suppressed', detail: 'gate failed' },
+  ],
+  errors: [{ stage: 'extract', path: 'facts.profile_update.basic_info.0.evidence', message: 'String must contain at least 4 character(s)' }],
+  durationMs: 480,
+  mode: 'live',
+};
+
+console.log('--- Test 1: append() writes one JSONL line per call ---');
+{
+  const dir = mkdtempSync(join(tmpdir(), 'audit-test-'));
+  const w = new AuditLogWriter(dir);
+  w.append(fixture);
+  w.append({ ...fixture, turnIndex: 8 });
+  w.flush();
+  const path = join(dir, '2026-04-18.jsonl');
+  assert(existsSync(path), 'file created');
+  const lines = readFileSync(path, 'utf8').trim().split('\n');
+  assert(lines.length === 2, '2 lines');
+  assert((JSON.parse(lines[0]) as AuditLogEntry).turnIndex === 7, 'first turn 7');
+  assert((JSON.parse(lines[1]) as AuditLogEntry).turnIndex === 8, 'second turn 8');
+}
+
+console.log('--- Test 2: rotate by date ---');
+{
+  const dir = mkdtempSync(join(tmpdir(), 'audit-rotate-'));
+  const w = new AuditLogWriter(dir);
+  w.append({ ...fixture, ts: '2026-04-18T23:59:59.000Z' });
+  w.append({ ...fixture, ts: '2026-04-19T00:00:00.000Z' });
+  w.flush();
+  assert(existsSync(join(dir, '2026-04-18.jsonl')), 'apr 18 file');
+  assert(existsSync(join(dir, '2026-04-19.jsonl')), 'apr 19 file');
+}
+
+console.log('--- Test 3: append() never throws on disk error ---');
+{
+  const w = new AuditLogWriter('/etc/avatanel-audit-test-cannot-write');
+  let threw = false;
+  try { w.append(fixture); w.flush(); } catch { threw = true; }
+  assert(!threw, 'append swallows write errors');
+}
+
+console.log('--- Test 4: auditLogDir helper ---');
+{
+  const d = auditLogDir('/some/workspace');
+  assert(d === join('/some/workspace', '.unified-extraction-log'), 'audit dir under workspace');
+}
+
+console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
+if (failed > 0) process.exit(1);

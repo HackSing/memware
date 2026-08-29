@@ -1,11 +1,16 @@
 {
-  "name": "memware-dev",
+  "name": "memware",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Development repo for memware — the publishable npm units live in packages/. Build with Bun.",
+  "description": "memware — single-source repo for the memory kernel (src/agent/memory/) and the publishable npm units (packages/). Build with Bun.",
+  "exports": {
+    "./memory/*": "./src/agent/memory/*.ts",
+    "./memware/*": "./src/memware/*.ts",
+    "./package.json": "./package.json"
+  },
   "scripts": {
-    "test": "bun test tests/memware/",
+    "test": "bun test tests/memware/ tests/unified-memory/",
     "typecheck": "bunx tsc --noEmit",
     "memware:serve": "bun src/memware/main.ts serve",
     "memware:build": "bun scripts/memware-build.ts",

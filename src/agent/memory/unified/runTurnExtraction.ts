@@ -6,45 +6,43 @@
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { AvatanelConfig } from '../../../types/config';
 import type { IMemoryService } from '../types';
-import type { WorkspaceManager } from '../../evolution/workspaceManager';
-import type { PendingWriter } from '../../evolution/types';
 import { OpenAIMemoryClient } from '../llmClient';
 import { AuditLogWriter, auditLogDir } from './auditLog';
 import { UnifiedExtractor } from './extractor';
 import { routeUnifiedExtraction } from './router';
-import { mergeThresholds } from './thresholds';
+import { mergeThresholds, type Thresholds } from './thresholds';
+import type { UnifiedPendingWriter, UnifiedWorkspaceSink } from './sinks';
 
 /**
- * Narrow view of {@link AvatanelConfig} that {@link runUnifiedTurnExtraction}
+ * The memory-kernel-owned extraction config that {@link runUnifiedTurnExtraction}
  * actually consumes: the memory-layer LLM endpoint / model overrides plus the
  * unified extraction thresholds (`config.memory.*`) and the global `debug`
- * flag. Field types and optionality are derived from AvatanelConfig so they
- * stay in lockstep (single source of truth) and any full AvatanelConfig
- * remains structurally assignable — existing callers pass the whole config
- * unchanged. Lets external embedders (memware) construct the input without
- * building an entire AvatanelConfig.
+ * flag. Field shapes mirror the host's config schema (avatanel
+ * MemoryConfigSchema: all endpoint/model fields optional strings,
+ * `unifiedThresholds` a partial per-category map, `debug` required boolean),
+ * so any full host config remains structurally assignable — existing callers
+ * pass the whole config unchanged, while external embedders (memware) can
+ * construct the input without building an entire host config.
  */
 export interface UnifiedTurnExtractionConfig {
-  memory?: Pick<
-    NonNullable<AvatanelConfig['memory']>,
-    | 'apiKey'
-    | 'baseUrl'
-    | 'unifiedExtractorApiKey'
-    | 'unifiedExtractorBaseUrl'
-    | 'unifiedExtractorModel'
-    | 'chatModel'
-    | 'unifiedThresholds'
-  >;
-  debug: AvatanelConfig['debug'];
+  memory?: {
+    apiKey?: string;
+    baseUrl?: string;
+    unifiedExtractorApiKey?: string;
+    unifiedExtractorBaseUrl?: string;
+    unifiedExtractorModel?: string;
+    chatModel?: string;
+    unifiedThresholds?: Partial<Thresholds>;
+  };
+  debug: boolean;
 }
 
 export interface UnifiedTurnExtractionInput {
   config: UnifiedTurnExtractionConfig;
   memory: IMemoryService;
-  workspace: WorkspaceManager | null;
-  pendingWriter: PendingWriter | null;
+  workspace: UnifiedWorkspaceSink | null;
+  pendingWriter: UnifiedPendingWriter | null;
   userId: string;
   sessionId: string;
   turnIndex: number;
