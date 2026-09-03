@@ -74,6 +74,8 @@ export async function createMemoryService(opts: {
   embeddingBaseUrl?: string;
   /** Optional separate API key for embeddings only */
   embeddingApiKey?: string;
+  /** Budget (ms) for the per-turn intent-routing call; see ModelConfig.intent_timeout_ms */
+  intentTimeoutMs?: number;
   multimodal?: {
     enabled: boolean;
     maxImageBytes: number;
@@ -121,6 +123,7 @@ export async function createMemoryService(opts: {
         ...(opts.embeddingDim     !== undefined ? { embedding_dim:      opts.embeddingDim     } : {}),
         ...(opts.embeddingBaseUrl !== undefined ? { embedding_base_url: opts.embeddingBaseUrl } : {}),
         ...(opts.embeddingApiKey  !== undefined ? { embedding_api_key:  opts.embeddingApiKey  } : {}),
+        ...(opts.intentTimeoutMs  !== undefined ? { intent_timeout_ms:  opts.intentTimeoutMs  } : {}),
       },
       ...(opts.multimodal ? {
         multimodal: {

@@ -395,6 +395,12 @@ export interface ModelConfig {
   embedding_dim: number;
   embedding_base_url?: string;
   embedding_api_key?: string;
+  /**
+   * Budget (ms) for the per-turn intent-routing call. When it elapses the
+   * turn proceeds without long-term memory retrieval. Default lives in
+   * `intentAnalyzer.ts` (`DEFAULT_INTENT_TIMEOUT_MS`).
+   */
+  intent_timeout_ms?: number;
 }
 
 export interface StorageConfig {

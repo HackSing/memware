@@ -6,6 +6,14 @@ This file records user-visible changes to memware. Version numbers follow [Seman
 
 ## [Unreleased]
 
+### Fixed
+
+- Intent routing: classify the per-turn intent-analysis timeout by the analyzer's own abort signal instead of the error's `name`, so provider SDK abort classes (e.g. openai `APIUserAbortError`) are logged as a single timeout line with elapsed/budget/model rather than as a failure with a stack dump; always clear the budget timer. / 意图路由：按分析器自身的 abort 信号而非错误 `name` 判定超时，供应商 SDK 的中止错误类（如 openai `APIUserAbortError`）现在记为一行含耗时/预算/模型的超时日志，而不是带堆栈的失败；预算计时器总是被清理。
+
+### Changed
+
+- Intent routing budget is now configurable (`model.intent_timeout_ms`, adapter option `intentTimeoutMs`) and its default is raised from 5 s to 10 s. Measured against the default SiliconFlow DeepSeek-V3.2 endpoint: p50 ≈ 2.2 s, max 2.8 s in isolation, yet ~20% of production turns exceeded 5 s and silently lost long-term memory retrieval. / 意图路由预算改为可配置（`model.intent_timeout_ms`，adapter 选项 `intentTimeoutMs`），默认从 5 秒提高到 10 秒：对默认 SiliconFlow DeepSeek-V3.2 端点实测 p50 ≈ 2.2 秒、单测最大 2.8 秒，但生产约 20% 轮次超过 5 秒并静默失去长期记忆检索。
+
 ### Added
 
 - Document the upgrade path for both distribution eras: source-checkout updates (`git pull` → re-verify → rebuild; binary path unchanged so no re-registration; `~/.memware/` data untouched) and the future npm path, in the bilingual READMEs and the usage reference. / 写明两种分发形态的更新方式：源码 checkout 更新（拉取 → 复验 → 重构建，二进制路径不变无需重新注册，`~/.memware/` 数据不受影响）与未来 npm 路径，双语 README 与使用手册同步。
