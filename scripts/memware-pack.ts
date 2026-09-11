@@ -23,6 +23,11 @@ const PACKAGES_DIR = "packages";
 /** The npm main package directory (bin launcher + optionalDependencies). */
 const MAIN_PACKAGE_DIR = join(PACKAGES_DIR, "memware");
 
+/** Windows spawn requires an executable extension; the launcher expects this name. */
+function packageBinaryName(target: (typeof MEMWARE_TARGETS)[number]): string {
+  return target.os === "win32" ? `${MEMWARE_PACKAGE_BINARY}.exe` : MEMWARE_PACKAGE_BINARY;
+}
+
 function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
@@ -30,11 +35,12 @@ function humanSize(bytes: number): string {
 /** Copy each freshly built binary into its platform subpackage, executable. */
 async function assemblePlatformPackages(): Promise<void> {
   for (const target of MEMWARE_TARGETS) {
-    const dest = join(PACKAGES_DIR, target.packageName, MEMWARE_PACKAGE_BINARY);
+    const binaryName = packageBinaryName(target);
+    const dest = join(PACKAGES_DIR, target.packageName, binaryName);
     await copyFile(distBinaryPath(target), dest);
     await chmod(dest, 0o755);
     const { size } = await stat(dest);
-    console.error(`[memware:pack] ${target.packageName}/${MEMWARE_PACKAGE_BINARY} ← ${humanSize(size)}`);
+    console.error(`[memware:pack] ${target.packageName}/${binaryName} ← ${humanSize(size)}`);
   }
 }
 

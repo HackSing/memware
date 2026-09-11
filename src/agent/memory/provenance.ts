@@ -13,6 +13,12 @@ export interface ProvenanceMeta {
   confidence: number;
   /** UTC ISO 8601 timestamp produced at extraction time. */
   extracted_at: string;
+  /**
+   * Identity of the agent client that produced this write (e.g. "claude-code",
+   * "codex"). Optional for backward compatibility with rows written before
+   * cross-agent provenance existed.
+   */
+  agent_id?: string;
 }
 
 export interface ProvenanceDeleteFilter {
@@ -26,6 +32,7 @@ export function makeProvenance(opts: {
   sessionId: string;
   turnIndex: number;
   confidence: number;
+  agentId?: string;
 }): ProvenanceMeta {
   return {
     source: 'unified-extraction-v1',
@@ -33,6 +40,7 @@ export function makeProvenance(opts: {
     turn_index: opts.turnIndex,
     confidence: opts.confidence,
     extracted_at: new Date().toISOString(),
+    ...(opts.agentId !== undefined ? { agent_id: opts.agentId } : {}),
   };
 }
 

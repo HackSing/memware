@@ -98,14 +98,18 @@ async function main(): Promise<void> {
   assert(captured.captured.length === 4, 'captures first 4 images in one turn');
   assert(captured.skipped.length === 1 && captured.skipped[0]?.reason === 'max_images_per_turn_exceeded', 'skips images over per-turn limit');
   assert(captured.captured.every((item) => existsSync(item.asset.file_path)), 'captured images are written to disk');
-  assert(
-    captured.captured.every((item) => (statSync(item.asset.file_path).mode & 0o777) === 0o600),
-    'captured image files are private 0600',
-  );
-  assert(
-    captured.captured.every((item) => (statSync(dirname(item.asset.file_path)).mode & 0o777) === 0o700),
-    'captured image directories are private 0700',
-  );
+  // NTFS cannot express POSIX mode bits (Node synthesizes 0o666); 0600/0700
+  // hold on POSIX only — the product still calls chmod on Windows (no-op).
+  if (process.platform !== 'win32') {
+    assert(
+      captured.captured.every((item) => (statSync(item.asset.file_path).mode & 0o777) === 0o600),
+      'captured image files are private 0600',
+    );
+    assert(
+      captured.captured.every((item) => (statSync(dirname(item.asset.file_path)).mode & 0o777) === 0o700),
+      'captured image directories are private 0700',
+    );
+  }
   assert(svc.listMemoryAssets({ userId }).length === 4, 'four unique assets are visible');
 
   console.log('--- size limit writes audit only ---');
@@ -335,7 +339,14 @@ async function main(): Promise<void> {
   } finally {
     db.close();
     svc.close();
-    rmSync(root, { recursive: true, force: true });
+    // Windows: antivirus/indexer can hold the temp dir past the retry window
+    // (EBUSY). Cleanup is best-effort — never fail assertions over it; the OS
+    // temp cleaner reaps leftovers.
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      console.log(`  WARN temp cleanup left behind: ${root}`);
+    }
   }
 
   if (failed > 0) {

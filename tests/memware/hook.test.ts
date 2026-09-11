@@ -19,7 +19,7 @@ const tmp = mkdtempSync(join(tmpdir(), "memware-hook-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 function makeEnv(): MemwareEnv {
-  return { apiKey: "test", dataDir: tmp, defaultUserId: "default", debug: false };
+  return { apiKey: "test", dataDir: tmp, defaultUserId: "default", agentId: "test-agent", debug: false };
 }
 
 function stubProvider(): { provider: SingleTenantProvider; state: StubState } {

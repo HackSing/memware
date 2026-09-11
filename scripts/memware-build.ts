@@ -48,6 +48,14 @@ export const MEMWARE_TARGETS: MemwareTarget[] = [
     binaryFile: "memware-linux-x64",
     packageName: "memware-linux-x64",
   },
+  {
+    key: "windows-x64",
+    bunTarget: "bun-windows-x64",
+    os: "win32",
+    cpu: "x64",
+    binaryFile: "memware-windows-x64.exe",
+    packageName: "memware-windows-x64",
+  },
 ];
 
 /** Repo-root-relative locations shared by the build and pack steps. */
@@ -92,10 +100,26 @@ async function buildTarget(target: MemwareTarget): Promise<void> {
   console.error(`[memware:build] ${target.binaryFile} → ${humanSize(await fileSize(outfile))}`);
 }
 
-/** Compile every supported target. */
+/** Compile every supported target, or the MEMWARE_BUILD_TARGETS subset. */
 export async function buildAll(): Promise<void> {
+  const raw = process.env.MEMWARE_BUILD_TARGETS?.trim();
+  let targets = MEMWARE_TARGETS;
+  if (raw) {
+    const wanted = new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    targets = MEMWARE_TARGETS.filter((t) => wanted.has(t.key));
+    if (targets.length === 0) {
+      throw new Error(
+        `MEMWARE_BUILD_TARGETS matched nothing (wanted: ${[...wanted].join(", ")}; known: ${MEMWARE_TARGETS.map((t) => t.key).join(", ")})`,
+      );
+    }
+  }
   await mkdir(MEMWARE_DIST_DIR, { recursive: true });
-  for (const target of MEMWARE_TARGETS) {
+  for (const target of targets) {
     await buildTarget(target);
   }
 }

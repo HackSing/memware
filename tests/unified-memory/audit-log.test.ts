@@ -1,10 +1,30 @@
-import { mkdtempSync, readFileSync, existsSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AuditLogWriter, type AuditLogEntry, auditLogDir } from '../../src/agent/memory/unified/auditLog';
 
 let passed = 0, failed = 0;
 function assert(c: boolean, l: string): void { if (c) { console.log(`  ✅ ${l}`); passed++; } else { console.log(`  ❌ ${l}`); failed++; } }
+
+/**
+ * NTFS cannot express POSIX mode bits — Node synthesizes 0o666 for every
+ * writable file regardless of chmod. The 0600/0700 assertions below hold on
+ * POSIX only; the writer still calls chmod on Windows (harmless no-op).
+ * Creating symlinks on Windows additionally requires developer/admin
+ * privileges, so the symlink-refusal scenario is skipped without them.
+ */
+const POSIX_MODE_BITS = process.platform !== 'win32';
+let canSymlink = false;
+try {
+  const probeDir = mkdtempSync(join(tmpdir(), 'audit-symlink-probe-'));
+  const probeTarget = join(probeDir, 'target.txt');
+  writeFileSync(probeTarget, '');
+  symlinkSync(probeTarget, join(probeDir, 'link.txt'));
+  canSymlink = true;
+  rmSync(probeDir, { recursive: true, force: true });
+} catch {
+  canSymlink = false;
+}
 
 const fixture: AuditLogEntry = {
   ts: '2026-04-18T12:00:00.000Z',
@@ -41,8 +61,10 @@ console.log('--- Test 1: append() writes one JSONL line per call ---');
   assert(lines.length === 2, '2 lines');
   assert((JSON.parse(lines[0]) as AuditLogEntry).turnIndex === 7, 'first turn 7');
   assert((JSON.parse(lines[1]) as AuditLogEntry).turnIndex === 8, 'second turn 8');
-  assert((statSync(dir).mode & 0o777) === 0o700, 'private audit directory is 0700');
-  assert((statSync(path).mode & 0o777) === 0o600, 'private audit file is 0600');
+  if (POSIX_MODE_BITS) {
+    assert((statSync(dir).mode & 0o777) === 0o700, 'private audit directory is 0700');
+    assert((statSync(path).mode & 0o777) === 0o600, 'private audit file is 0600');
+  }
 }
 
 console.log('--- Test 2: untrusted event timestamps cannot select an audit path ---');
@@ -64,20 +86,30 @@ console.log('--- Test 2b: private permissions are the default ---');
   const w = new AuditLogWriter(dir);
   w.append(fixture);
   const path = join(dir, `${new Date().toISOString().slice(0, 10)}.jsonl`);
-  assert((statSync(dir).mode & 0o777) === 0o700, 'default audit directory is 0700');
-  assert((statSync(path).mode & 0o777) === 0o600, 'default audit file is 0600');
+  if (POSIX_MODE_BITS) {
+    assert((statSync(dir).mode & 0o777) === 0o700, 'default audit directory is 0700');
+    assert((statSync(path).mode & 0o777) === 0o600, 'default audit file is 0600');
+  }
 }
 
 console.log('--- Test 3: append() never throws on disk error ---');
 {
-  const w = new AuditLogWriter('/etc/avatanel-audit-test-cannot-write');
+  // Use an existing FILE as the "directory": mkdir then fails on every
+  // platform. `/etc/...` would silently resolve to a drive root on Windows.
+  const holder = mkdtempSync(join(tmpdir(), 'audit-disk-error-'));
+  const fileAsDir = join(holder, 'occupied');
+  writeFileSync(fileAsDir, 'not a directory');
+  const w = new AuditLogWriter(fileAsDir);
   let threw = false;
   try { w.append(fixture); w.flush(); } catch { threw = true; }
   assert(!threw, 'append swallows write errors');
+  rmSync(holder, { recursive: true, force: true });
 }
 
 console.log('--- Test 3b: private append refuses a symlinked date file ---');
-{
+if (!canSymlink) {
+  console.log('  ⏭ skipped (symlink privilege unavailable on this platform)');
+} else {
   const dir = mkdtempSync(join(tmpdir(), 'audit-symlink-'));
   const outside = join(dir, '..', `audit-outside-${Date.now()}.txt`);
   writeFileSync(outside, 'untouched');

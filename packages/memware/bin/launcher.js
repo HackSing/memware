@@ -28,6 +28,7 @@ const path = require("node:path");
 const PLATFORM_PACKAGES = {
   "darwin-arm64": "memware-darwin-arm64",
   "linux-x64": "memware-linux-x64",
+  "win32-x64": "memware-windows-x64",
 };
 
 /** Binary filename inside each platform subpackage. */

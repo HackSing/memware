@@ -12,8 +12,9 @@ memware is a local-first long-term memory layer for MCP-compatible agents. It di
 
 ## Why memware
 
-- **Automatic writes**: A Claude Code Stop Hook captures each completed turn, so persistence does not depend on the model remembering to call a tool.
-- **On-demand recall**: Seven MCP tools cover status, warmup, context retrieval, processing, search, archive, and reset.
+- **Automatic writes**: Stop-hook adapters capture each completed turn from Claude Code and Codex, so persistence does not depend on the model remembering to call a tool.
+- **Cross-agent task continuity**: Every agent shares one local memory store; memory_resume hands an unfinished task to the next agent with its status, next step, and the last agent that touched it.
+- **On-demand recall**: Eight MCP tools cover status, warmup, context retrieval, processing, search, task handoff, archive, and reset.
 - **User-owned storage**: Structured memory, vector indexes, and audit logs live under a local data directory.
 - **Provider choice**: Extraction and embeddings use configurable OpenAI-compatible endpoints instead of a single locked provider.
 
@@ -60,6 +61,14 @@ claude mcp add memware \
   -- "$PWD/dist/memware/memware-linux-x64" serve
 ```
 
+Windows x64:
+
+```sh
+claude mcp add memware \
+  -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-windows-x64" serve
+```
+
 Call `memory_status` in Claude Code to verify the server. For a custom endpoint, also configure `MEMWARE_BASE_URL`, `MEMWARE_MODEL`, `MEMWARE_EMBEDDING_MODEL`, and the matching embedding dimension. Use `MEMWARE_EMBEDDING_BASE_URL` for a separate embedding endpoint and provide `MEMWARE_EMBEDDING_API_KEY` when it uses a different origin.
 
 ### 3. Enable automatic memory
@@ -94,6 +103,7 @@ After the first npm release, `npx -y memware@latest serve` always resolves the n
 | --- | --- |
 | Long-running coding partnership | Keep project constraints, personal preferences, and prior decisions available across sessions. |
 | Multi-session work | Recover relevant context in a new session instead of restating the same background. |
+| Cross-agent task handoff | Start a task in one agent (e.g. Claude Code) and continue it in another (e.g. Codex) from a resume briefing with status, next step, and provenance. |
 | Private single-user agents | Bind one local service process to one trusted tenant and reject caller-selected identities. |
 | Authenticated multi-user hosts | Let a trusted downstream map authenticated sessions to isolated tenant capabilities without accepting caller-selected identities. |
 | Local-first workflows | Let users search, audit, and erase the memory they own. |
@@ -104,9 +114,9 @@ memware is not a chat-history sync service, and it does not mean conversation te
 
 | Available | Not yet available |
 | --- | --- |
-| MCP stdio server with seven memory tools | Windows prebuilt binary |
+| MCP stdio server plus a token-gated loopback HTTP API with eight memory tools | Non-loopback (remote) HTTP access to the memory API |
 | Claude Code Stop Hook for automatic writes | Hosted cloud sync or a team admin console |
-| Local builds for macOS arm64 and Linux x64 | Public npm and GitHub Release distribution |
+| Local builds for macOS arm64, Linux x64, and Windows x64 | Public npm and GitHub Release distribution |
 | Local SQLite, vector indexes, and audit logs | A non-technical visual memory manager |
 | Trusted-host multi-tenant capability API | Built-in identity provider or tenant admin console |
 
@@ -132,7 +142,7 @@ Use the entry point that matches the task:
 
 | Path | Responsibility |
 | --- | --- |
-| `src/memware/` | CLI serve and hook modes |
+| `src/memware/` | CLI serve, hook, and http modes |
 | `src/agent/memory/` | extraction, routing, storage, and vector search kernel |
 | `packages/` | npm main package and platform binary packages |
 | `scripts/` | build, packaging, and content consistency tools |

@@ -15,13 +15,14 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import type { MemwareEnv } from "./env";
 import { buildExtractionConfig, processTurn } from "./processTurn";
-import { extractLastTurn } from "./transcript";
+import { getAdapter } from "./transcripts";
+import type { LastTurn } from "./transcript";
 import type { TenantLease, TenantProvider } from "./tenantProvider";
 
 const HookInputSchema = z
   .object({
     session_id: z.string().optional(),
-    transcript_path: z.string().min(1),
+    transcript_path: z.string().optional(),
   })
   .passthrough();
 
@@ -35,6 +36,40 @@ function logSkip(reason: string, detail?: unknown): HookResult {
   const suffix = detail === undefined ? "" : `: ${detail instanceof Error ? detail.message : String(detail)}`;
   console.error(`[memware hook] skipped (${reason})${suffix}`);
   return { wrote: false, reason };
+}
+
+/**
+ * Resolve the last turn for this hook invocation using the agent's adapter:
+ * prefer a transcript file when the payload carries one, otherwise let the
+ * adapter pull the turn inline from the payload (e.g. Codex notify).
+ * Returns null (with a skip reason) when nothing usable is found.
+ */
+export function resolveHookTurn(
+  agentId: string,
+  hook: { session_id?: string; transcript_path?: string } & Record<string, unknown>,
+): { turn: LastTurn; sessionId: string } | { turn: null; reason: string; detail?: unknown } {
+  const adapter = getAdapter(agentId);
+  const sessionId = hook.session_id ?? `memware-hook-${agentId}`;
+
+  if (hook.transcript_path) {
+    let transcriptText: string;
+    try {
+      transcriptText = readFileSync(hook.transcript_path, "utf8");
+    } catch (err) {
+      return { turn: null, reason: "transcript-unreadable", detail: err };
+    }
+    if (!adapter.extractLastTurn) {
+      return { turn: null, reason: `adapter-without-transcript-support:${adapter.id}` };
+    }
+    const turn = adapter.extractLastTurn(transcriptText);
+    return turn ? { turn, sessionId } : { turn: null, reason: "no-user-turn" };
+  }
+
+  if (adapter.extractFromHookPayload) {
+    const turn = adapter.extractFromHookPayload(hook);
+    return turn ? { turn, sessionId } : { turn: null, reason: "no-user-turn" };
+  }
+  return { turn: null, reason: "no-transcript-path" };
 }
 
 /**
@@ -58,17 +93,10 @@ export async function runHook(
     return logSkip("hook-json-invalid", hook.error.issues.map((i) => i.message).join("; "));
   }
 
-  let transcriptText: string;
-  try {
-    transcriptText = readFileSync(hook.data.transcript_path, "utf8");
-  } catch (err) {
-    return logSkip("transcript-unreadable", err);
-  }
+  const resolved = resolveHookTurn(env.agentId, hook.data);
+  if (!resolved.turn) return logSkip(resolved.reason, resolved.detail);
 
-  const turn = extractLastTurn(transcriptText);
-  if (!turn) return logSkip("no-user-turn");
-
-  const sessionId = hook.data.session_id ?? "memware-hook";
+  const { turn, sessionId } = resolved;
   let lease: TenantLease | undefined;
   try {
     lease = await provider.acquire({ action: "write" });
@@ -83,6 +111,7 @@ export async function runHook(
         turnIndex: turn.turnIndex,
         userMessage: turn.userMessage,
         assistantMessage: turn.assistantMessage,
+        agentId: env.agentId,
       });
     });
     return { wrote: result.ok, reason: result.error, actions: result.actions };

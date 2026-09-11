@@ -14,12 +14,12 @@ but any [MCP](https://modelcontextprotocol.io) client can use it.
 
 It runs in two modes:
 
-- `memware serve` — an MCP stdio server exposing seven memory tools.
-- `memware hook` — a Claude Code Stop hook that reads the transcript on stdin and
-  persists the last turn automatically, so writing memory never depends on the
-  model remembering to do it.
+- `memware serve` — an MCP stdio server exposing eight memory tools.
+- `memware hook` — a Stop-hook writer that persists the last turn automatically,
+  so writing memory never depends on the model remembering to do it. Claude Code
+  supplies a transcript path; Codex is supported via its inline `notify` payload.
 
-## The seven tools
+## The eight tools
 
 `memware serve` exposes these tools over MCP. The process is bound to exactly
 one tenant from `MEMWARE_USER_ID` (or `default`). The optional `userId` fields
@@ -33,12 +33,13 @@ bound value; selecting another tenant is rejected.
 | `memory_get_context` | `userId?`, `query` | Retrieve memory context (a `system` + `context` text pair) relevant to a query. |
 | `memory_process` | `userId?`, `sessionId`, `turnIndex`, `userMessage`, `assistantMessage` | Extract and persist memory from one conversation turn. |
 | `memory_search` | `userId?`, `query`, `limit?` | Search the bound tenant's memory; returns matching `results` and `clusters`. |
+| `memory_resume` | `userId?`, `topic?`, `limit?` | Cross-agent task handoff: active task threads (with the last agent that touched each), related memories, and a ready-to-read briefing. |
 | `memory_archive` | `userId?` | Archive stale memory clusters for the bound tenant. |
 | `memory_reset` | `userId?` | Delete all database, vector, audit, asset, relation, cache, and sidecar artifacts for the bound tenant. |
 
 > In an automated setup you rarely call `memory_process` yourself — the Stop hook
 > does the writing. The read tools (`memory_warmup`, `memory_get_context`,
-> `memory_search`) are what the model uses during a conversation.
+> `memory_search`, `memory_resume`) are what the model uses during a conversation.
 
 ## Try from source today
 
@@ -176,6 +177,105 @@ Notes:
   (e.g. `~/.zshrc`). If you also override `MEMWARE_BASE_URL` / `MEMWARE_MODEL`,
   export those there too.
 
+## Multi-agent setup (shared memory across agents)
+
+All agents that point at the **same `MEMWARE_DATA_DIR` + `MEMWARE_USER_ID`**
+share one memory store — anything one agent writes, every other agent can read.
+Set `MEMWARE_AGENT_ID` per agent so provenance records which client learned
+what (each write is stamped; `memory_resume` shows the last agent per task).
+
+| Agent | MCP registration | Automatic writes | Read instructions |
+| --- | --- | --- | --- |
+| Claude Code | `claude mcp add ...` (above) | Stop hook (transcript file) | `templates/claude-md-snippet.md` → `CLAUDE.md` |
+| Codex | `[mcp_servers.memware]` in `~/.codex/config.toml` | `notify` hook (inline payload) | `templates/agents-md-snippet.md` → `AGENTS.md` |
+| Cursor | `.cursor/mcp.json` | none — instruction-driven | `templates/agents-md-snippet.md` → `.cursor/rules` |
+| Any MCP client | standard stdio registration | none — instruction-driven | adapt the agents snippet |
+
+### Codex (~/.codex/config.toml)
+
+```toml
+[mcp_servers.memware]
+command = "/path/to/memware-linux-x64"
+args = ["serve"]
+env = { MEMWARE_API_KEY = "sk-...", MEMWARE_AGENT_ID = "codex" }
+
+# automatic turn capture (inline payload — no transcript file needed)
+notify = ["/path/to/memware-linux-x64", "hook"]
+```
+
+The Codex `notify` payload carries the finished turn inline
+(`input-messages` / `last-assistant-message`); the hook detects the absence of
+`transcript_path` and parses it directly. Same never-blocks guarantee as
+Claude Code: failures log to stderr and exit `0`.
+
+The notify process needs the same env exports as the Claude Code hook
+(`MEMWARE_API_KEY`, optionally `MEMWARE_BASE_URL` / `MEMWARE_MODEL`,
+`MEMWARE_DATA_DIR` / `MEMWARE_USER_ID` if non-default).
+
+### Cursor (.cursor/mcp.json)
+
+```json
+{
+  "mcpServers": {
+    "memware": {
+      "command": "/path/to/memware-linux-x64",
+      "args": ["serve"],
+      "env": { "MEMWARE_API_KEY": "sk-...", "MEMWARE_AGENT_ID": "cursor" }
+    }
+  }
+}
+```
+
+Cursor has no Stop hook today, so writing is instruction-driven: paste
+[`templates/agents-md-snippet.md`](templates/agents-md-snippet.md) into your
+Cursor rules and the model calls `memory_process` at the end of meaningful
+exchanges.
+
+### Sharing vs isolation
+
+Shared memory is the default: same data dir + same `MEMWARE_USER_ID` = one
+memory store for all agents. To isolate an agent (e.g. work vs personal), give
+it a different `MEMWARE_USER_ID` — each id maps to its own tenant tree under
+`~/.memware/tenants/<opaque-key>/` and nothing crosses over.
+
+## Local HTTP API (non-MCP agents)
+
+`memware http` exposes the same memory store over HTTP for agents and scripts
+that don't speak MCP:
+
+```sh
+export MEMWARE_HTTP_TOKEN=$(openssl rand -hex 32)
+npx -y memware http
+# [memware] http ready — http://127.0.0.1:18970 (loopback only, bearer token required)
+```
+
+Endpoints (all JSON; POST bodies unless noted):
+
+| Endpoint | Body | Mirrors |
+| --- | --- | --- |
+| `GET /health` | — | `memory_status` (subset) |
+| `POST /v1/process` | `sessionId`, `userMessage`, `assistantMessage`, `turnIndex?`, `agentId?` | `memory_process` |
+| `POST /v1/context` | `query` | `memory_get_context` |
+| `POST /v1/search` | `query`, `limit?` | `memory_search` |
+| `POST /v1/resume` | `topic?`, `limit?` | `memory_resume` |
+
+Security model — the API is local-only by construction:
+
+- **Loopback binding enforced.** The server binds `127.0.0.1` (override with
+  `MEMWARE_HTTP_HOST`, but only loopback addresses are accepted — a wider bind
+  is refused at startup).
+- **Bearer token required.** `MEMWARE_HTTP_TOKEN` (min 16 chars) must be set;
+  without it the server refuses to start. Every request needs
+  `Authorization: Bearer <token>`.
+- **Same tenant boundary as stdio.** Requests cannot select a user/tenant; the
+  optional `agentId` body field only stamps write provenance.
+
+```sh
+curl -s http://127.0.0.1:18970/v1/resume \
+  -H "Authorization: Bearer $MEMWARE_HTTP_TOKEN" \
+  -d '{"topic":"refactor"}'
+```
+
 ## Teach the model to read (recommended)
 
 A hook writes memory, but the model still has to *decide to read it*. Paste
@@ -270,15 +370,20 @@ latest:
 
 ## Platform support
 
-Prebuilt binaries ship for **`darwin-arm64`** (Apple Silicon macOS) and
-**`linux-x64`**. On any other platform the launcher fails loudly with the
-supported list rather than silently degrading — it never runs a wrong-arch
-binary. Windows is not yet supported.
+Prebuilt binaries ship for **`darwin-arm64`** (Apple Silicon macOS),
+**`linux-x64`**, and **`windows-x64`**. On any other platform the launcher
+fails loudly with the supported list rather than silently degrading — it never
+runs a wrong-arch binary.
+
+Windows notes: run `memware` from a terminal with `npx`/npm on PATH; the Stop
+hook works the same as on macOS/Linux, and `transcript_path` values with
+Windows path separators are handled natively.
 
 ## Troubleshooting
 
 - **`unsupported platform "<os>-<arch>"`** — your OS/arch isn't in the prebuilt
-  set (`darwin-arm64`, `linux-x64`). memware exits `1`; there is no binary to run.
+  set (`darwin-arm64`, `linux-x64`, `windows-x64`). memware exits `1`; there is
+  no binary to run.
 - **`platform package "memware-<platform>" is not installed`** — the platform
   subpackage was skipped, almost always because memware was installed with
   `--omit=optional` / `--no-optional`. Reinstall without those flags

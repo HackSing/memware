@@ -19,6 +19,8 @@ export interface ActiveThreadUpdateInput {
   topic_label?: string;
   status: string;
   next_step?: string;
+  /** Agent client that last touched this thread (cross-agent handoff). */
+  last_agent_id?: string;
 }
 
 export interface FocusUpdateInput {
@@ -133,7 +135,13 @@ export function upsertActiveThreadInDigest(
   if (idx >= 0) threads.splice(idx, 1);
 
   if (status !== "resolved" && status !== "completed") {
-    threads.unshift({ topic, status: thread.status, next_step: thread.next_step });
+    threads.unshift({
+      topic,
+      status: thread.status,
+      next_step: thread.next_step,
+      ...(thread.last_agent_id !== undefined ? { last_agent_id: thread.last_agent_id } : {}),
+      updated_at: new Date().toISOString(),
+    });
   }
   if (threads.length > limit) {
     doc.sys_core.digest.active_threads = threads.slice(0, limit);

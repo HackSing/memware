@@ -12,8 +12,9 @@ memware 是面向 MCP 兼容 Agent 的本地优先长期记忆层。它把对话
 
 ## 为什么需要 memware
 
-- **自动写入**: Claude Code Stop Hook 在每轮结束后自动捕获对话，不依赖模型记得调用写入工具。
-- **按需召回**: 7 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、归档与重置。
+- **自动写入**: Stop Hook 适配器自动捕获 Claude Code 与 Codex 的每轮完成对话，不依赖模型记得调用写入工具。
+- **跨代理任务连续性**: 所有 Agent 共享同一个本地记忆库；memory_resume 把未完成任务的状态、下一步和最后写入的 Agent 交接给下一个 Agent。
+- **按需召回**: 8 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、任务交接、归档与重置。
 - **用户持有数据**: 结构化记忆、向量索引和审计日志都保存在本地数据目录。
 - **模型服务可替换**: 提取与 Embedding 使用可配置的 OpenAI 兼容接口，不绑定单一模型供应商。
 
@@ -60,6 +61,14 @@ claude mcp add memware \
   -- "$PWD/dist/memware/memware-linux-x64" serve
 ```
 
+Windows x64:
+
+```sh
+claude mcp add memware \
+  -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  -- "$PWD/dist/memware/memware-windows-x64" serve
+```
+
 在 Claude Code 中调用 `memory_status` 验证服务状态。若使用自定义接口，还需配置 `MEMWARE_BASE_URL`、`MEMWARE_MODEL`、`MEMWARE_EMBEDDING_MODEL` 和对应的向量维度。独立 Embedding 接口使用 `MEMWARE_EMBEDDING_BASE_URL`；跨 origin 时必须同时提供 `MEMWARE_EMBEDDING_API_KEY`。
 
 ### 3. 打开自动记忆
@@ -94,6 +103,7 @@ bun run memware:build
 | --- | --- |
 | 长期结对开发 | 跨会话保留项目约束、个人偏好与历史决策。 |
 | 多会话任务 | 新会话能够找回相关上下文，减少重复说明。 |
+| 跨代理任务交接 | 在一个 Agent（如 Claude Code）中开始的任务，可由另一个 Agent（如 Codex）依据交接简报（状态、下一步、来源）继续执行。 |
 | 私有单用户 Agent | 一个本地服务进程只绑定一个可信租户，并拒绝调用方切换身份。 |
 | 已认证多用户宿主 | 由可信下游把已认证会话映射为隔离的租户能力，不接受调用方自行选择身份。 |
 | 本地优先工作流 | 让用户搜索、审计并删除自己持有的记忆。 |
@@ -104,9 +114,9 @@ memware 不是聊天记录同步服务，也不代表原始对话只在本地处
 
 | 已具备 | 暂未提供 |
 | --- | --- |
-| MCP stdio 服务与 7 个记忆工具 | Windows 预构建二进制 |
+| MCP stdio 服务与令牌鉴权的本地回环 HTTP API，共 8 个记忆工具 | 记忆 API 的非回环（远程）访问 |
 | Claude Code Stop Hook 自动写入 | 托管式云同步与团队后台 |
-| macOS arm64、Linux x64 本地构建 | npm 与 GitHub Release 公开分发 |
+| macOS arm64、Linux x64、Windows x64 本地构建 | npm 与 GitHub Release 公开分发 |
 | 本地 SQLite、向量索引与审计日志 | 面向非技术用户的可视化管理界面 |
 | 可信宿主多租户能力 API | 内置身份提供商与租户管理后台 |
 
@@ -132,7 +142,7 @@ memware 不是聊天记录同步服务，也不代表原始对话只在本地处
 
 | 路径 | 职责 |
 | --- | --- |
-| `src/memware/` | serve 与 hook 两种 CLI 模式 |
+| `src/memware/` | serve、hook 与 http 三种 CLI 模式 |
 | `src/agent/memory/` | 提取、路由、存储与向量搜索内核 |
 | `packages/` | npm 主包与平台二进制包 |
 | `scripts/` | 构建、打包与内容一致性工具 |

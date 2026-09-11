@@ -21,6 +21,11 @@ repeat themselves:
    and ground your answer in what it returns.
 3. **When you need to actively recall something specific** that the current
    context doesn't cover, call `memory_search` with a focused query.
+4. **When continuing ongoing work** — the user says "继续" / "continue" or
+   references an unfinished task — call `memory_resume` first. It lists active
+   task threads (including the last agent that touched each and its recorded
+   next step) plus related memories, so work started in another agent can be
+   picked up without re-explaining.
 
 You do **not** need to record anything yourself. New turns are captured
 automatically by the memware Stop hook, so do **not** call `memory_process` by

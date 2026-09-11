@@ -56,6 +56,7 @@ import {
   TEXT_MEMORY_RELATION_EXTRACTOR_VERSION,
 } from "./relationProjection";
 import type {
+  ActiveThread,
   IMemoryService,
   MemoryContext,
   MemoryCluster,
@@ -620,6 +621,16 @@ export class MemoryService implements IMemoryService {
     upsertActiveThreadInDigest(doc, thread, this.settings.config.write.active_threads_limit);
     this.storage.updateUserDoc(userId, doc);
     this.cache.deleteProfile(userId);
+  }
+
+  async getActiveThreads(userId: string): Promise<ActiveThread[]> {
+    let doc = this.engine.getUserCached(userId);
+    if (!doc) {
+      this.engine.warmupUser(userId);
+      doc = this.engine.getUserCached(userId);
+      if (!doc) return [];
+    }
+    return [...doc.sys_core.digest.active_threads];
   }
 
   async upsertFocus(

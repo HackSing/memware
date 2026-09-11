@@ -22,6 +22,11 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { resolveModelRuntimeConfig, type MemwareEnv } from "./env";
 import { buildExtractionConfig, processTurn } from "./processTurn";
+import {
+  buildResumeBrief,
+  DEFAULT_RESUME_THREAD_LIMIT,
+  RELATED_PER_THREAD,
+} from "./resume";
 import type {
   RequestSecurityContext,
   TenantAction,
@@ -31,6 +36,13 @@ import type {
 
 function ok(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+}
+
+/** Loose topic focus for memory_resume: case-insensitive substring in either direction. */
+function topicIdentityMatch(threadTopic: string, topic: string): boolean {
+  const a = threadTopic.toLowerCase();
+  const b = topic.toLowerCase();
+  return a.includes(b) || b.includes(a);
 }
 
 type ToolRequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -94,6 +106,7 @@ export function createMemwareServer(
         return ok({
           server: "memware",
           ...provider.status(),
+          agentId: env.agentId,
           storageLayoutVersion: "t1",
           permissionsSecure: true,
           resetState: lease.handle.lifecycleState,
@@ -160,6 +173,7 @@ export function createMemwareServer(
             turnIndex,
             userMessage,
             assistantMessage,
+            agentId: env.agentId,
           }),
         );
         return ok(result);
@@ -182,6 +196,44 @@ export function createMemwareServer(
           ]),
         );
         return ok({ results, clusters });
+      });
+    },
+  );
+
+  server.registerTool(
+    "memory_resume",
+    {
+      description:
+        "Cross-agent task handoff: list active task threads (with the last agent that touched " +
+        "each) plus related memories, assembled into a briefing. Call at the start of a task " +
+        "to continue work another agent left off. Optionally pass `topic` to focus one thread.",
+      inputSchema: {
+        userId: z.string().optional(),
+        topic: z.string().optional(),
+        limit: z.number().int().positive().optional(),
+      },
+    },
+    async ({ userId, topic, limit }, extra) => {
+      return withTenant("read", userId, extra, async (lease) => {
+        const { threads, relatedByThread } = await lease.handle.run(async (memory) => {
+          const all = memory.getActiveThreads
+            ? await memory.getActiveThreads(lease.userId)
+            : [];
+          const focused = topic
+            ? all.filter((t) => topicIdentityMatch(t.topic, topic))
+            : all;
+          const top = focused.slice(0, limit ?? DEFAULT_RESUME_THREAD_LIMIT);
+          const related = await Promise.all(
+            top.map((t) =>
+              memory
+                .searchClusters(lease.userId, t.topic, { limit: RELATED_PER_THREAD })
+                .catch(() => []),
+            ),
+          );
+          return { threads: top, relatedByThread: related };
+        });
+        const result = buildResumeBrief(threads, relatedByThread);
+        return ok(result);
       });
     },
   );

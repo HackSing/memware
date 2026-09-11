@@ -1,0 +1,51 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-test-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Build binaries (linux/macos runners cross-compile; windows builds native)
+        if: matrix.os != 'windows-latest'
+        run: bun run memware:build
+        env:
+          MEMWARE_BUILD_TARGETS: linux-x64,darwin-arm64
+
+      - name: Build windows binary natively
+        if: matrix.os == 'windows-latest'
+        run: bun run memware:build
+        env:
+          MEMWARE_BUILD_TARGETS: windows-x64

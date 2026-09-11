@@ -87,6 +87,7 @@ export const UNIFIED_EXTRACTOR_SYSTEM_PROMPT = `你是一个记忆抽取引擎�
 - **profile_update 的 value_quote 必须出现在 evidence 里**，evidence 必须出现在用户消息里。反例：用户说"我最喜欢的是披萨"，你写 value_quote="寿司", evidence="我最喜欢的是" → BLOCKED（quote 不在 evidence）。
 - intimacy_delta 仅允许 [-0.05, 0.05]。一轮对话的关系变化是细微的。
 - active_threads.topic_quote / focus.topic_quote 不能是 "general"/"misc"/"none" / "这个"/"那个"/"最近"/"问题"/"事情"/"想法"/"项目"/"一下"/"什么"/"哪个"/"怎么"/"为什么"/"其他" 这类无意义占位，必须 ≥2 字，且必须出现在用户消息里。
+- **active_threads.next_step 要写成另一个 agent 能直接执行的下一步**（具体动作 + 对象，例 "完成 server.ts 的鉴权中间件并补测试"），不要写 "继续"/"接着做"/"推进" 这类无法交接的空话；任务线索（编码、调试、部署、写作、多轮方案）有进展或状态变化（开始/暂停/等待用户/完成）时必须更新对应 thread。
 - categories 只允许: memory | learning | error | expression | mission | none。看到 facts 里有 relationship/profile/focus/memory_clusters 等字段时，不要把它们塞进 categories；categories 描述"这一轮是什么事件"，不是"facts 里有哪些段"。拿不准就写 ["memory"] 或 ["none"]。
 - routes.pending_rules 用于可复用行为规则候选；routes.expression_pending 用于表达、语气、格式、身份呈现、回复长度等反馈候选；routes.mission_pending 用于任务执行流程、方案设计、工具使用、验证方式等执行模式候选；routes.errors 用于事实明确且已经发生的错误；routes.learnings 用于用户明确确认、可立即复用的经验。不要只因为 assistant 的私有 Reflect 块里写了某个 Route 就照抄；应根据 USER MESSAGE 和已剥离内部协议后的 ASSISTANT RESPONSE 独立分类。
 - **不要把提示词规避/安全措辞模板写入 routes**：如果一轮对话只是为了避免误判、规避审核、绕开敏感词或改写安全/风控提示词（例如"攻击者→异常用户"、"漏洞→设计缺口"），通常只服务当前任务，routes 写 {}。如果用户明确要求记住某个长期工作偏好，只能抽取与当前 agent 领域直接相关的中性执行规则（例：财经查询优先用"公开财经新闻/行情数据/产业链景气"），不要保存通用的审核规避模板或安全评审话术。

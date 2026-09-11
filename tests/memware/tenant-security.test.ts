@@ -24,6 +24,13 @@ function tempRoot(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
+/**
+ * NTFS cannot express POSIX mode bits — Node synthesizes 0o666 for every
+ * writable file regardless of chmod. The 0600/0700 assertions below hold on
+ * POSIX only; the product still calls chmod on Windows (harmless no-op).
+ */
+const POSIX_MODE_BITS = process.platform !== "win32";
+
 test("tenant ids are capability-bound and collision-resistant", () => {
   const root = tempRoot("memware-tenant-key-");
   try {
@@ -61,7 +68,9 @@ test("legacy migration is atomic for one proven tenant and blocks ambiguous alia
     expect(migrateLegacyTenantStorage(tenant)).toEqual({ status: "migrated" });
     expect(existsSync(tenant.paths.dbPath)).toBe(true);
     expect(existsSync(join(safeRoot, "alice"))).toBe(false);
-    expect((statSync(tenant.paths.dbPath).mode & 0o777)).toBe(0o600);
+    if (POSIX_MODE_BITS) {
+      expect(statSync(tenant.paths.dbPath).mode & 0o777).toBe(0o600);
+    }
   } finally {
     rmSync(safeRoot, { recursive: true, force: true });
   }
@@ -131,7 +140,9 @@ test("reset drains in-flight work and deletes the complete tenant tree before su
     expect(readdirSync(join(root, ".deleting"))).toEqual([]);
     const receiptPath = join(root, "deletion-receipts", `${result.operationId}.json`);
     expect(existsSync(receiptPath)).toBe(true);
-    expect((statSync(receiptPath).mode & 0o777)).toBe(0o600);
+    if (POSIX_MODE_BITS) {
+      expect(statSync(receiptPath).mode & 0o777).toBe(0o600);
+    }
     expect(readFileSync(receiptPath, "utf8")).not.toContain("owner");
   } finally {
     rmSync(root, { recursive: true, force: true });

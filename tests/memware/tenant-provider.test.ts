@@ -306,7 +306,7 @@ test("concurrent checkout constructs one handle per tenant and respects capacity
 
 test("trusted MCP server resolves tenant only from authenticated transport context", async () => {
   const root = tempRoot("memware-provider-server-");
-  const env: MemwareEnv = { apiKey: "test", dataDir: root, defaultUserId: "unused", debug: false };
+  const env: MemwareEnv = { apiKey: "test", dataDir: root, defaultUserId: "unused", agentId: "test-agent", debug: false };
   const { provider, states } = makeProvider(root);
   expect(() => createMemwareServer(env, provider)).toThrow("resolveSecurityContext");
 

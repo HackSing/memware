@@ -41,6 +41,8 @@ export interface ProcessTurnInput {
   turnIndex: number;
   userMessage: string;
   assistantMessage: string;
+  /** Agent client identity stamped into provenance (e.g. "claude-code"). */
+  agentId?: string;
 }
 
 export interface ProcessTurnResult {
@@ -113,6 +115,7 @@ export async function processTurn(input: ProcessTurnInput): Promise<ProcessTurnR
     auditLog: new AuditLogWriter(input.auditDir, { privateMode: true }),
     extractErrors: result.errors,
     thresholds: mergeThresholds(memCfg?.unifiedThresholds),
+    ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
   });
   return { ok: true, actions: actions.length };
 }

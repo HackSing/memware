@@ -20,15 +20,22 @@
     {
       "title": { "en": "Automatic writes", "zh": "自动写入" },
       "body": {
-        "en": "A Claude Code Stop Hook captures each completed turn, so persistence does not depend on the model remembering to call a tool.",
-        "zh": "Claude Code Stop Hook 在每轮结束后自动捕获对话，不依赖模型记得调用写入工具。"
+        "en": "Stop-hook adapters capture each completed turn from Claude Code and Codex, so persistence does not depend on the model remembering to call a tool.",
+        "zh": "Stop Hook 适配器自动捕获 Claude Code 与 Codex 的每轮完成对话，不依赖模型记得调用写入工具。"
+      }
+    },
+    {
+      "title": { "en": "Cross-agent task continuity", "zh": "跨代理任务连续性" },
+      "body": {
+        "en": "Every agent shares one local memory store; memory_resume hands an unfinished task to the next agent with its status, next step, and the last agent that touched it.",
+        "zh": "所有 Agent 共享同一个本地记忆库；memory_resume 把未完成任务的状态、下一步和最后写入的 Agent 交接给下一个 Agent。"
       }
     },
     {
       "title": { "en": "On-demand recall", "zh": "按需召回" },
       "body": {
-        "en": "Seven MCP tools cover status, warmup, context retrieval, processing, search, archive, and reset.",
-        "zh": "7 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、归档与重置。"
+        "en": "Eight MCP tools cover status, warmup, context retrieval, processing, search, task handoff, archive, and reset.",
+        "zh": "8 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、任务交接、归档与重置。"
       }
     },
     {
@@ -54,6 +61,10 @@
     {
       "name": { "en": "Linux x64", "zh": "Linux x64" },
       "binary": "memware-linux-x64"
+    },
+    {
+      "name": { "en": "Windows x64", "zh": "Windows x64" },
+      "binary": "memware-windows-x64"
     }
   ],
   "useCases": [
@@ -69,6 +80,13 @@
       "result": {
         "en": "Recover relevant context in a new session instead of restating the same background.",
         "zh": "新会话能够找回相关上下文，减少重复说明。"
+      }
+    },
+    {
+      "name": { "en": "Cross-agent task handoff", "zh": "跨代理任务交接" },
+      "result": {
+        "en": "Start a task in one agent (e.g. Claude Code) and continue it in another (e.g. Codex) from a resume briefing with status, next step, and provenance.",
+        "zh": "在一个 Agent（如 Claude Code）中开始的任务，可由另一个 Agent（如 Codex）依据交接简报（状态、下一步、来源）继续执行。"
       }
     },
     {
@@ -95,15 +113,15 @@
   ],
   "boundaries": [
     {
-      "available": { "en": "MCP stdio server with seven memory tools", "zh": "MCP stdio 服务与 7 个记忆工具" },
-      "notAvailable": { "en": "Windows prebuilt binary", "zh": "Windows 预构建二进制" }
+      "available": { "en": "MCP stdio server plus a token-gated loopback HTTP API with eight memory tools", "zh": "MCP stdio 服务与令牌鉴权的本地回环 HTTP API，共 8 个记忆工具" },
+      "notAvailable": { "en": "Non-loopback (remote) HTTP access to the memory API", "zh": "记忆 API 的非回环（远程）访问" }
     },
     {
       "available": { "en": "Claude Code Stop Hook for automatic writes", "zh": "Claude Code Stop Hook 自动写入" },
       "notAvailable": { "en": "Hosted cloud sync or a team admin console", "zh": "托管式云同步与团队后台" }
     },
     {
-      "available": { "en": "Local builds for macOS arm64 and Linux x64", "zh": "macOS arm64、Linux x64 本地构建" },
+      "available": { "en": "Local builds for macOS arm64, Linux x64, and Windows x64", "zh": "macOS arm64、Linux x64、Windows x64 本地构建" },
       "notAvailable": { "en": "Public npm and GitHub Release distribution", "zh": "npm 与 GitHub Release 公开分发" }
     },
     {
@@ -145,7 +163,7 @@
   "repositoryLayout": [
     {
       "path": "src/memware/",
-      "role": { "en": "CLI serve and hook modes", "zh": "serve 与 hook 两种 CLI 模式" }
+      "role": { "en": "CLI serve, hook, and http modes", "zh": "serve、hook 与 http 三种 CLI 模式" }
     },
     {
       "path": "src/agent/memory/",

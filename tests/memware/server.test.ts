@@ -29,7 +29,7 @@ interface Harness {
 
 async function setup(): Promise<Harness> {
   const dataDir = mkdtempSync(join(tmpdir(), "memware-serve-"));
-  const env: MemwareEnv = { apiKey: "test", dataDir, defaultUserId: "default", debug: false };
+  const env: MemwareEnv = { apiKey: "test", dataDir, defaultUserId: "default", agentId: "test-agent", debug: false };
   const { service, state } = buildStubMemory();
   const registry = new MemoryRegistry(async () => service);
   const tenant = initializeTenantContext(dataDir, env.defaultUserId);
@@ -76,6 +76,7 @@ test("lists all seven memory tools", async () => {
         "memory_get_context",
         "memory_process",
         "memory_reset",
+        "memory_resume",
         "memory_search",
         "memory_status",
         "memory_warmup",
@@ -255,7 +256,7 @@ test("error path: invalid args are rejected by zod validation", async () => {
 
 test("error path: extractor no-op when the LLM returns garbage", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "memware-serve-bad-"));
-  const env: MemwareEnv = { apiKey: "test", dataDir, defaultUserId: "default", debug: false };
+  const env: MemwareEnv = { apiKey: "test", dataDir, defaultUserId: "default", agentId: "test-agent", debug: false };
   // Stub whose LLM returns non-JSON — extractor fails, process returns ok:false.
   const { service, state } = buildStubMemory();
   (service as { getLLMClient: () => unknown }).getLLMClient = () => ({

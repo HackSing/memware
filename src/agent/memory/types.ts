@@ -118,6 +118,10 @@ export interface ActiveThread {
   topic: string;
   status: string;
   next_step?: string;
+  /** Agent client that last touched this thread (cross-agent handoff). */
+  last_agent_id?: string;
+  /** ISO 8601 timestamp of the most recent upsert. */
+  updated_at?: string;
 }
 
 export interface MemoryCluster {
@@ -350,8 +354,16 @@ export interface IMemoryService {
       topic_label?: string;
       status: string;
       next_step?: string;
+      /** Agent client that last touched this thread (cross-agent handoff). */
+      last_agent_id?: string;
     },
   ): Promise<void>;
+
+  /**
+   * List the user's active threads (digest.active_threads, newest-first).
+   * Used by the cross-agent resume flow; optional so lightweight stubs can omit it.
+   */
+  getActiveThreads?(userId: string): Promise<ActiveThread[]>;
 
   /**
    * [PR3a] Upsert a focus item using canonical quote as identity.

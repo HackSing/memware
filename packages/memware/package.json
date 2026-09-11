@@ -24,6 +24,7 @@
   },
   "optionalDependencies": {
     "memware-darwin-arm64": "0.1.0",
-    "memware-linux-x64": "0.1.0"
+    "memware-linux-x64": "0.1.0",
+    "memware-windows-x64": "0.1.0"
   }
 }

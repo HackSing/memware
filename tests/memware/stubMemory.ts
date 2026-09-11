@@ -7,6 +7,7 @@
  */
 
 import type {
+  ActiveThread,
   IMemoryService,
   MemoryCluster,
   MemoryContext,
@@ -26,6 +27,8 @@ export interface StubState {
   chatCompletionCalls: number;
   /** Models passed to each chatCompletion call, in order. */
   chatCompletionModels: string[];
+  /** In-memory active threads, mutated by upsertActiveThread (newest-first). */
+  activeThreads: ActiveThread[];
 }
 
 export interface StubMemory {
@@ -66,6 +69,7 @@ export function buildStubMemory(payload: UnifiedMemoryExtraction = defaultPayloa
     searchCalls: [],
     chatCompletionCalls: 0,
     chatCompletionModels: [],
+    activeThreads: [],
   };
 
   const llm: MemoryLLMClient = {
@@ -118,7 +122,26 @@ export function buildStubMemory(payload: UnifiedMemoryExtraction = defaultPayloa
       state.updateProfileCalls += 1;
     },
     async updateRelationship() {},
-    async upsertActiveThread() {},
+    async upsertActiveThread(userId, thread) {
+      // Minimal mirror of upsertActiveThreadInDigest: same-topic replace,
+      // newest-first. Keeps resolved threads out, like production.
+      const topic = thread.topic_label ?? thread.topic_quote;
+      const identity = topic.toLowerCase();
+      const idx = state.activeThreads.findIndex((t) => t.topic.toLowerCase() === identity);
+      if (idx >= 0) state.activeThreads.splice(idx, 1);
+      if (!["resolved", "completed"].includes(thread.status.toLowerCase())) {
+        state.activeThreads.unshift({
+          topic,
+          status: thread.status,
+          ...(thread.next_step !== undefined ? { next_step: thread.next_step } : {}),
+          ...(thread.last_agent_id !== undefined ? { last_agent_id: thread.last_agent_id } : {}),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    },
+    async getActiveThreads() {
+      return [...state.activeThreads];
+    },
     async upsertFocus() {},
     async searchClusters(): Promise<MemoryCluster[]> {
       return [

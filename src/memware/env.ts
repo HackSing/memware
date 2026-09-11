@@ -57,8 +57,31 @@ export interface MemwareEnv {
   dataDir: string;
   /** MEMWARE_USER_ID — default user id (default "default"). */
   defaultUserId: string;
+  /**
+   * MEMWARE_AGENT_ID — identity of the agent client this process serves
+   * (e.g. "claude-code", "codex", "cursor"). Stamped into write provenance so
+   * shared-memory readers can tell which agent produced a memory. Default
+   * "unknown" (backward compatible; older setups wrote no agent id at all).
+   */
+  agentId: string;
   /** MEMWARE_DEBUG — verbose extraction diagnostics to stderr. */
   debug: boolean;
+}
+
+/** memware-owned default agent id when MEMWARE_AGENT_ID is unset. */
+export const DEFAULT_AGENT_ID = "unknown";
+
+function readAgentId(source: NodeJS.ProcessEnv): string {
+  const value = readOptional(source, "MEMWARE_AGENT_ID");
+  if (value === undefined) return DEFAULT_AGENT_ID;
+  // Provenance ids flow into stored records and audit logs; keep them short,
+  // flat, and path-free so they can never be confused with file syntax.
+  if (value.length > 64 || !/^[A-Za-z0-9._-]+$/.test(value)) {
+    throw new MemwareConfigError(
+      'MEMWARE_AGENT_ID must be 1-64 chars of [A-Za-z0-9._-], e.g. "claude-code"',
+    );
+  }
+  return value;
 }
 
 function readOptional(source: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -183,6 +206,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): MemwareEnv {
     embeddingApiKey: readOptional(source, "MEMWARE_EMBEDDING_API_KEY"),
     dataDir: readOptional(source, "MEMWARE_DATA_DIR") ?? defaultDataDir(),
     defaultUserId: readOptional(source, "MEMWARE_USER_ID") ?? DEFAULT_USER_ID,
+    agentId: readAgentId(source),
     debug: source.MEMWARE_DEBUG === "1" || source.MEMWARE_DEBUG === "true",
   };
   // Validate cross-channel endpoint/key policy before the first tool call.

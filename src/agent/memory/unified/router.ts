@@ -33,6 +33,8 @@ export interface RouteContext {
   auditLog: AuditLogWriter;
   thresholds: Thresholds;
   extractErrors?: StructuredError[];
+  /** Agent client identity for cross-agent provenance (e.g. "claude-code"). */
+  agentId?: string;
 }
 
 export async function routeUnifiedExtraction(
@@ -46,6 +48,7 @@ export async function routeUnifiedExtraction(
     sessionId: ctx.sessionId,
     turnIndex: ctx.turnIndex,
     confidence: ext.event.confidence,
+    agentId: ctx.agentId,
   });
 
   // ── per-sink dispatcher ──
@@ -190,7 +193,10 @@ export async function routeUnifiedExtraction(
         'active_thread',
         { kind: 'active_thread', detail },
         'active_thread_failed',
-        () => ctx.memory.upsertActiveThread(ctx.userId, t),
+        () => ctx.memory.upsertActiveThread(ctx.userId, {
+          ...t,
+          ...(ctx.agentId !== undefined ? { last_agent_id: ctx.agentId } : {}),
+        }),
       );
     }
   }
