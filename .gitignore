@@ -4,6 +4,7 @@ dist/
 # memware build/pack artifacts
 packages/memware-darwin-arm64/memware
 packages/memware-linux-x64/memware
+packages/memware-windows-x64/memware.exe
 *.tgz
 
 .env
