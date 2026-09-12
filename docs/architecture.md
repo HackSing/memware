@@ -1,11 +1,13 @@
 # memware 架构要点
 
+> 最后核对：2026-09-12
+
 本文记录 memware 分发面（`src/memware/`）的结构性事实。记忆内核（`src/agent/memory/`）是本仓唯一真源，avatanel 经 git 依赖的 `memware/memory/*` exports 子路径消费；分发面同理经 `memware/memware/*` 暴露。
 
 ## MCP 工具面（serve）
 
-`src/memware/server.ts` 的 `createMemwareServer` 以 MCP stdio 暴露七工具：
-memory_status / warmup / get_context / process / search / archive / reset。
+`src/memware/server.ts` 的 `createMemwareServer` 以 MCP stdio 暴露八工具：
+memory_status / warmup / get_context / process / search / resume / archive / reset。
 入参在边界经 zod 校验后，先经过 `TenantProvider` 选择部署边界，再由 `TenantMemoryHandle` 的能力校验
 与操作闸门进入 `IMemoryService`。调用方不能用 `userId` 切换租户。
 
@@ -78,7 +80,8 @@ audit 目录硬编码为 `~/.avatanel/.unified-extraction-log`，会破坏 memwa
 
 ## 分发产物
 
-`scripts/memware-build.ts` 的 `MEMWARE_TARGETS`（darwin-arm64 / linux-x64 平台矩阵单一真源）
+`scripts/memware-build.ts` 的 `MEMWARE_TARGETS`（darwin-arm64 / linux-x64 / windows-x64
+平台矩阵单一真源）
 驱动 `bun build --compile` 产出单文件二进制；npm 主包 `memware` 的 `bin/launcher.js` 仅按
 os/cpu 解析平台子包并 spawn 二进制，不用 postinstall（npm RFC 0054），解析失败显式 exit 1。
 

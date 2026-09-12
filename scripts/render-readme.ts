@@ -28,8 +28,8 @@ function render(language: Language): string {
     localize(content.summary, language),
     "",
     zh
-      ? "> **项目状态：预发布。** 源码、测试与本地二进制构建已可用；npm 包和 GitHub Release 尚未公开发布。当前请使用下方的源码体验路径。`npx memware` 将在首次公开发布后可用。"
-      : "> **Status: pre-release.** Source, tests, and local binary builds are available. The npm package and GitHub Release are not public yet, so use the source path below today. `npx memware` will become available with the first public release.",
+      ? `> **项目状态：预发布（当前源码版本 ${content.status.version}）。** 源码、测试与本地二进制构建已可用；npm 包和 GitHub Release 尚未公开发布。当前请使用下方的源码体验路径。\`npx memware\` 将在首次公开发布后可用。`
+      : `> **Status: pre-release.** Source, tests, and local binary builds are available. Current source version ${content.status.version}. The npm package and GitHub Release are not public yet, so use the source path below today. \`npx memware\` will become available with the first public release.`,
     "",
     zh ? "## 为什么需要 memware" : "## Why memware",
     "",
@@ -93,8 +93,8 @@ function render(language: Language): string {
     zh ? "### 3. 打开自动记忆" : "### 3. Enable automatic memory",
     "",
     zh
-      ? "将 [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) 合并到 Claude Code 设置，并把 [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) 加入项目 `CLAUDE.md`。完整配置、7 个工具和故障排查见 [使用文档](packages/memware/README.md)。"
-      : "Merge [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) into the Claude Code settings, then add [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) to the project's `CLAUDE.md`. See the [usage reference](packages/memware/README.md) for configuration, all seven tools, and troubleshooting.",
+      ? "将 [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) 合并到 Claude Code 设置，并把 [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) 加入项目 `CLAUDE.md`。完整配置、8 个工具和故障排查见 [使用文档](packages/memware/README.md)。"
+      : "Merge [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) into the Claude Code settings, then add [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) to the project's `CLAUDE.md`. See the [usage reference](packages/memware/README.md) for configuration, all eight tools, and troubleshooting.",
     "",
     zh ? "首次 npm 发布后，安装入口将简化为：" : "After the first npm release, installation will become:",
     "",
@@ -193,6 +193,8 @@ function render(language: Language): string {
     "bun run content:check",
     "bun run memware:build",
     "bun run memware:pack",
+    "bun run kernel:serve",
+    "bun run kernel:build",
     "```",
     "",
     zh

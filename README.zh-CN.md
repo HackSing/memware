@@ -8,13 +8,14 @@
 
 memware 是面向 MCP 兼容 Agent 的本地优先长期记忆层。它把对话提炼为持久、可搜索的记忆，并在后续任务中召回相关上下文。记忆保存在用户自己的设备上，提取与向量化使用用户选择的 OpenAI 兼容模型接口。
 
-> **项目状态：预发布。** 源码、测试与本地二进制构建已可用；npm 包和 GitHub Release 尚未公开发布。当前请使用下方的源码体验路径。`npx memware` 将在首次公开发布后可用。
+> **项目状态：预发布（当前源码版本 0.2.0）。** 源码、测试与本地二进制构建已可用；npm 包和 GitHub Release 尚未公开发布。当前请使用下方的源码体验路径。`npx memware` 将在首次公开发布后可用。
 
 ## 为什么需要 memware
 
 - **自动写入**: Stop Hook 适配器自动捕获 Claude Code 与 Codex 的每轮完成对话，不依赖模型记得调用写入工具。
 - **跨代理任务连续性**: 所有 Agent 共享同一个本地记忆库；memory_resume 把未完成任务的状态、下一步和最后写入的 Agent 交接给下一个 Agent。
 - **按需召回**: 8 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、任务交接、归档与重置。
+- **可选无存储部署**: 宿主只需要提炼、向量化与检索并且自带存储时，可以使用无状态内核服务（`src/kernel/`）：它只经 HTTP 提供这三种能力，自身不存任何记忆。
 - **用户持有数据**: 结构化记忆、向量索引和审计日志都保存在本地数据目录。
 - **模型服务可替换**: 提取与 Embedding 使用可配置的 OpenAI 兼容接口，不绑定单一模型供应商。
 
@@ -73,7 +74,7 @@ claude mcp add memware \
 
 ### 3. 打开自动记忆
 
-将 [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) 合并到 Claude Code 设置，并把 [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) 加入项目 `CLAUDE.md`。完整配置、7 个工具和故障排查见 [使用文档](packages/memware/README.md)。
+将 [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) 合并到 Claude Code 设置，并把 [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) 加入项目 `CLAUDE.md`。完整配置、8 个工具和故障排查见 [使用文档](packages/memware/README.md)。
 
 首次 npm 发布后，安装入口将简化为：
 
@@ -106,6 +107,7 @@ bun run memware:build
 | 跨代理任务交接 | 在一个 Agent（如 Claude Code）中开始的任务，可由另一个 Agent（如 Codex）依据交接简报（状态、下一步、来源）继续执行。 |
 | 私有单用户 Agent | 一个本地服务进程只绑定一个可信租户，并拒绝调用方切换身份。 |
 | 已认证多用户宿主 | 由可信下游把已认证会话映射为隔离的租户能力，不接受调用方自行选择身份。 |
+| 自带存储的后端 | 只调用无状态内核服务完成提炼、向量化与排序，记忆仍然存放在宿主自己的数据库中。 |
 | 本地优先工作流 | 让用户搜索、审计并删除自己持有的记忆。 |
 
 memware 不是聊天记录同步服务，也不代表原始对话只在本地处理：用于提取和向量化的正文仍会发送到你配置的模型接口，但本地 `userId` 和 `sessionId` 不会作为提示词元数据发送。请根据数据敏感度选择服务商和部署方式。
@@ -114,7 +116,8 @@ memware 不是聊天记录同步服务，也不代表原始对话只在本地处
 
 | 已具备 | 暂未提供 |
 | --- | --- |
-| MCP stdio 服务与令牌鉴权的本地回环 HTTP API，共 8 个记忆工具 | 记忆 API 的非回环（远程）访问 |
+| MCP stdio 服务与令牌鉴权的本地回环 HTTP API，共 8 个记忆工具 | 本地记忆 API 的非回环（远程）访问 |
+| 可远程部署的无状态内核服务（`POST /extract` / `/embed` / `/search`，必须提供 Bearer token） | 内核服务自身的记忆存储——它只计算不存储 |
 | Claude Code Stop Hook 自动写入 | 托管式云同步与团队后台 |
 | macOS arm64、Linux x64、Windows x64 本地构建 | npm 与 GitHub Release 公开分发 |
 | 本地 SQLite、向量索引与审计日志 | 面向非技术用户的可视化管理界面 |
@@ -124,6 +127,8 @@ memware 不是聊天记录同步服务，也不代表原始对话只在本地处
 
 - [完整使用文档](packages/memware/README.md): 工具、配置、数据与排障
 - [内容运营手册](docs/CONTENT_OPERATIONS.md): 定位、节奏、证据门槛与指标
+- [架构要点](docs/architecture.md): MCP 工具面、唯一写路径、hook 模式与无状态内核服务
+- [内核服务契约](contracts/kernel.v1.json): /extract、/embed 与 /search 的接口契约
 - [贡献指南](CONTRIBUTING.md): Issue、讨论、内容与代码贡献
 - [安全策略](SECURITY.md): 支持范围与私密漏洞报告
 - [变更记录](CHANGELOG.md): 用户可感知变化与发布状态
@@ -143,10 +148,14 @@ memware 不是聊天记录同步服务，也不代表原始对话只在本地处
 | 路径 | 职责 |
 | --- | --- |
 | `src/memware/` | serve、hook 与 http 三种 CLI 模式 |
-| `src/agent/memory/` | 提取、路由、存储与向量搜索内核 |
+| `src/memware/adapters.ts` | 零依赖 `memware/adapters` 入口，解析最后一轮完成对话 |
+| `src/agent/memory/` | 提取、路由、存储与向量搜索引擎（与内核服务共用） |
+| `src/kernel/` | 无状态 HTTP 内核服务（`bun run kernel:serve`） |
+| `contracts/` | 内核服务接口契约（`kernel.v1.json`） |
+| `Dockerfile` | 内核服务容器镜像（`docker build -t memware-kernel .`） |
 | `packages/` | npm 主包与平台二进制包 |
 | `scripts/` | 构建、打包与内容一致性工具 |
-| `tests/` | MCP、Hook 与记忆内核测试 |
+| `tests/` | MCP、hook、记忆引擎与内核服务测试 |
 
 ```sh
 bun run test
@@ -154,6 +163,8 @@ bun run typecheck
 bun run content:check
 bun run memware:build
 bun run memware:pack
+bun run kernel:serve
+bun run kernel:build
 ```
 
 memware 是采用 [MIT 许可证](LICENSE) 的开源软件。Copyright (c) 2026 Memware。

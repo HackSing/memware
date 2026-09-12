@@ -8,13 +8,14 @@
 
 memware is a local-first long-term memory layer for MCP-compatible agents. It distills conversations into durable, searchable memory and recalls relevant context in later tasks. Memory stays on the user's machine, while extraction and embedding use the OpenAI-compatible model endpoint the user chooses.
 
-> **Status: pre-release.** Source, tests, and local binary builds are available. The npm package and GitHub Release are not public yet, so use the source path below today. `npx memware` will become available with the first public release.
+> **Status: pre-release.** Source, tests, and local binary builds are available. Current source version 0.2.0. The npm package and GitHub Release are not public yet, so use the source path below today. `npx memware` will become available with the first public release.
 
 ## Why memware
 
 - **Automatic writes**: Stop-hook adapters capture each completed turn from Claude Code and Codex, so persistence does not depend on the model remembering to call a tool.
 - **Cross-agent task continuity**: Every agent shares one local memory store; memory_resume hands an unfinished task to the next agent with its status, next step, and the last agent that touched it.
 - **On-demand recall**: Eight MCP tools cover status, warmup, context retrieval, processing, search, task handoff, archive, and reset.
+- **Storage-free deployment option**: When a host only needs extraction, embedding, and search and keeps its own storage, the stateless kernel service (`src/kernel/`) exposes those over HTTP and stores nothing itself.
 - **User-owned storage**: Structured memory, vector indexes, and audit logs live under a local data directory.
 - **Provider choice**: Extraction and embeddings use configurable OpenAI-compatible endpoints instead of a single locked provider.
 
@@ -73,7 +74,7 @@ Call `memory_status` in Claude Code to verify the server. For a custom endpoint,
 
 ### 3. Enable automatic memory
 
-Merge [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) into the Claude Code settings, then add [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) to the project's `CLAUDE.md`. See the [usage reference](packages/memware/README.md) for configuration, all seven tools, and troubleshooting.
+Merge [`packages/memware/templates/claude-settings-hooks.json`](packages/memware/templates/claude-settings-hooks.json) into the Claude Code settings, then add [`packages/memware/templates/claude-md-snippet.md`](packages/memware/templates/claude-md-snippet.md) to the project's `CLAUDE.md`. See the [usage reference](packages/memware/README.md) for configuration, all eight tools, and troubleshooting.
 
 After the first npm release, installation will become:
 
@@ -106,6 +107,7 @@ After the first npm release, `npx -y memware@latest serve` always resolves the n
 | Cross-agent task handoff | Start a task in one agent (e.g. Claude Code) and continue it in another (e.g. Codex) from a resume briefing with status, next step, and provenance. |
 | Private single-user agents | Bind one local service process to one trusted tenant and reject caller-selected identities. |
 | Authenticated multi-user hosts | Let a trusted downstream map authenticated sessions to isolated tenant capabilities without accepting caller-selected identities. |
+| Backends that already own their storage | Call the stateless kernel service for extraction, embedding, and ranking only, and keep every memory in the host's own database. |
 | Local-first workflows | Let users search, audit, and erase the memory they own. |
 
 memware is not a chat-history sync service, and it does not mean conversation text stays entirely on-device. Text used for extraction and embeddings is sent to the model endpoint you configure, while local `userId` and `sessionId` routing metadata is omitted from provider prompts. Choose that provider and deployment according to the sensitivity of your data.
@@ -114,7 +116,8 @@ memware is not a chat-history sync service, and it does not mean conversation te
 
 | Available | Not yet available |
 | --- | --- |
-| MCP stdio server plus a token-gated loopback HTTP API with eight memory tools | Non-loopback (remote) HTTP access to the memory API |
+| MCP stdio server plus a token-gated loopback HTTP API with eight memory tools | Non-loopback (remote) HTTP access to the local memory API |
+| Remotely deployable stateless kernel service (`POST /extract` / `/embed` / `/search`, Bearer token required) | Any memory storage inside that kernel service — it computes only |
 | Claude Code Stop Hook for automatic writes | Hosted cloud sync or a team admin console |
 | Local builds for macOS arm64, Linux x64, and Windows x64 | Public npm and GitHub Release distribution |
 | Local SQLite, vector indexes, and audit logs | A non-technical visual memory manager |
@@ -124,6 +127,8 @@ memware is not a chat-history sync service, and it does not mean conversation te
 
 - [Usage reference](packages/memware/README.md): tools, configuration, data, and troubleshooting
 - [Content operations (Chinese)](docs/CONTENT_OPERATIONS.md): positioning, cadence, evidence gates, and metrics
+- [Architecture notes (Chinese)](docs/architecture.md): MCP surface, single write path, hook mode, and the stateless kernel service
+- [Kernel service contract](contracts/kernel.v1.json): wire contract for /extract, /embed, and /search
 - [Contributing](CONTRIBUTING.md): issues, discussions, content, and code changes
 - [Security policy](SECURITY.md): supported state and private vulnerability reporting
 - [Changelog](CHANGELOG.md): user-visible changes and release state
@@ -143,10 +148,14 @@ Use the entry point that matches the task:
 | Path | Responsibility |
 | --- | --- |
 | `src/memware/` | CLI serve, hook, and http modes |
-| `src/agent/memory/` | extraction, routing, storage, and vector search kernel |
+| `src/memware/adapters.ts` | dependency-free `memware/adapters` entry point that resolves the last finished turn |
+| `src/agent/memory/` | extraction, routing, storage and vector-search engine (shared with the kernel service) |
+| `src/kernel/` | stateless HTTP kernel service (`bun run kernel:serve`) |
+| `contracts/` | kernel service wire contract (`kernel.v1.json`) |
+| `Dockerfile` | kernel service container image (`docker build -t memware-kernel .`) |
 | `packages/` | npm main package and platform binary packages |
 | `scripts/` | build, packaging, and content consistency tools |
-| `tests/` | MCP, Hook, and memory-kernel tests |
+| `tests/` | MCP, hook, memory-engine, and kernel-service tests |
 
 ```sh
 bun run test
@@ -154,6 +163,8 @@ bun run typecheck
 bun run content:check
 bun run memware:build
 bun run memware:pack
+bun run kernel:serve
+bun run kernel:build
 ```
 
 memware is open-source software licensed under the [MIT License](LICENSE). Copyright (c) 2026 Memware.

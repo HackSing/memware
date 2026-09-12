@@ -29,11 +29,15 @@ bun run typecheck
 bun run content:check
 ```
 
+`bun run test` covers `tests/memware/`, `tests/unified-memory/`, and
+`tests/kernel/` (the stateless kernel service).
+
 For binary or packaging changes, also run:
 
 ```sh
 bun run memware:build
 bun run memware:pack
+bun run kernel:build
 ```
 
 ### Pull request standard
@@ -42,7 +46,7 @@ bun run memware:pack
 2. Explain why the change is needed, what changed, how it was verified, and any compatibility or privacy impact.
 3. Add tests for new behavior. Documentation-only changes must still verify links, commands, and factual claims.
 4. Never commit API keys, real memory data, raw conversations, personal paths, or local databases.
-5. Update the README source or `CHANGELOG.md` when user-visible behavior changes. Generated README files must not be edited directly.
+5. Update the README source (`docs/content/readme-content.json`, rendered with `bun run content:write`) or `CHANGELOG.md` when user-visible behavior changes. The generated `README.md` and `README.zh-CN.md` must not be edited directly.
 
 ## 简体中文
 
@@ -71,11 +75,14 @@ bun run typecheck
 bun run content:check
 ```
 
+`bun run test` 覆盖 `tests/memware/`、`tests/unified-memory/` 与 `tests/kernel/`（无状态内核服务）。
+
 涉及二进制或打包时，再运行：
 
 ```sh
 bun run memware:build
 bun run memware:pack
+bun run kernel:build
 ```
 
 ### Pull Request 标准
@@ -84,4 +91,4 @@ bun run memware:pack
 2. 解释为什么要改、改了什么、如何验证，以及兼容性或隐私影响。
 3. 新行为需要测试；仅文档改动也要验证链接、命令和事实口径。
 4. 不提交 API Key、真实记忆、原始会话、个人路径或本地数据库。
-5. 用户可感知行为变化时，更新 README 事实源或 `CHANGELOG.md`；不要直接编辑生成的 README。
+5. 用户可感知行为变化时，更新 README 事实源 `docs/content/readme-content.json`（再跑 `bun run content:write` 重新生成）或 `CHANGELOG.md`；不要直接编辑生成的 `README.md` 与 `README.zh-CN.md`。

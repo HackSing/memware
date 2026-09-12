@@ -10,6 +10,7 @@
     "zh": "memware 是面向 MCP 兼容 Agent 的本地优先长期记忆层。它把对话提炼为持久、可搜索的记忆，并在后续任务中召回相关上下文。记忆保存在用户自己的设备上，提取与向量化使用用户选择的 OpenAI 兼容模型接口。"
   },
   "status": {
+    "version": "0.2.0",
     "phase": "pre-release",
     "sourceReady": true,
     "localBinaryBuildReady": true,
@@ -36,6 +37,13 @@
       "body": {
         "en": "Eight MCP tools cover status, warmup, context retrieval, processing, search, task handoff, archive, and reset.",
         "zh": "8 个 MCP 工具覆盖状态、预热、上下文召回、处理、搜索、任务交接、归档与重置。"
+      }
+    },
+    {
+      "title": { "en": "Storage-free deployment option", "zh": "可选无存储部署" },
+      "body": {
+        "en": "When a host only needs extraction, embedding, and search and keeps its own storage, the stateless kernel service (`src/kernel/`) exposes those over HTTP and stores nothing itself.",
+        "zh": "宿主只需要提炼、向量化与检索并且自带存储时，可以使用无状态内核服务（`src/kernel/`）：它只经 HTTP 提供这三种能力，自身不存任何记忆。"
       }
     },
     {
@@ -104,6 +112,13 @@
       }
     },
     {
+      "name": { "en": "Backends that already own their storage", "zh": "自带存储的后端" },
+      "result": {
+        "en": "Call the stateless kernel service for extraction, embedding, and ranking only, and keep every memory in the host's own database.",
+        "zh": "只调用无状态内核服务完成提炼、向量化与排序，记忆仍然存放在宿主自己的数据库中。"
+      }
+    },
+    {
       "name": { "en": "Local-first workflows", "zh": "本地优先工作流" },
       "result": {
         "en": "Let users search, audit, and erase the memory they own.",
@@ -114,7 +129,11 @@
   "boundaries": [
     {
       "available": { "en": "MCP stdio server plus a token-gated loopback HTTP API with eight memory tools", "zh": "MCP stdio 服务与令牌鉴权的本地回环 HTTP API，共 8 个记忆工具" },
-      "notAvailable": { "en": "Non-loopback (remote) HTTP access to the memory API", "zh": "记忆 API 的非回环（远程）访问" }
+      "notAvailable": { "en": "Non-loopback (remote) HTTP access to the local memory API", "zh": "本地记忆 API 的非回环（远程）访问" }
+    },
+    {
+      "available": { "en": "Remotely deployable stateless kernel service (`POST /extract` / `/embed` / `/search`, Bearer token required)", "zh": "可远程部署的无状态内核服务（`POST /extract` / `/embed` / `/search`，必须提供 Bearer token）" },
+      "notAvailable": { "en": "Any memory storage inside that kernel service — it computes only", "zh": "内核服务自身的记忆存储——它只计算不存储" }
     },
     {
       "available": { "en": "Claude Code Stop Hook for automatic writes", "zh": "Claude Code Stop Hook 自动写入" },
@@ -145,6 +164,16 @@
       "description": { "en": "positioning, cadence, evidence gates, and metrics", "zh": "定位、节奏、证据门槛与指标" }
     },
     {
+      "label": { "en": "Architecture notes (Chinese)", "zh": "架构要点" },
+      "path": "docs/architecture.md",
+      "description": { "en": "MCP surface, single write path, hook mode, and the stateless kernel service", "zh": "MCP 工具面、唯一写路径、hook 模式与无状态内核服务" }
+    },
+    {
+      "label": { "en": "Kernel service contract", "zh": "内核服务契约" },
+      "path": "contracts/kernel.v1.json",
+      "description": { "en": "wire contract for /extract, /embed, and /search", "zh": "/extract、/embed 与 /search 的接口契约" }
+    },
+    {
       "label": { "en": "Contributing", "zh": "贡献指南" },
       "path": "CONTRIBUTING.md",
       "description": { "en": "issues, discussions, content, and code changes", "zh": "Issue、讨论、内容与代码贡献" }
@@ -166,8 +195,24 @@
       "role": { "en": "CLI serve, hook, and http modes", "zh": "serve、hook 与 http 三种 CLI 模式" }
     },
     {
+      "path": "src/memware/adapters.ts",
+      "role": { "en": "dependency-free `memware/adapters` entry point that resolves the last finished turn", "zh": "零依赖 `memware/adapters` 入口，解析最后一轮完成对话" }
+    },
+    {
       "path": "src/agent/memory/",
-      "role": { "en": "extraction, routing, storage, and vector search kernel", "zh": "提取、路由、存储与向量搜索内核" }
+      "role": { "en": "extraction, routing, storage and vector-search engine (shared with the kernel service)", "zh": "提取、路由、存储与向量搜索引擎（与内核服务共用）" }
+    },
+    {
+      "path": "src/kernel/",
+      "role": { "en": "stateless HTTP kernel service (`bun run kernel:serve`)", "zh": "无状态 HTTP 内核服务（`bun run kernel:serve`）" }
+    },
+    {
+      "path": "contracts/",
+      "role": { "en": "kernel service wire contract (`kernel.v1.json`)", "zh": "内核服务接口契约（`kernel.v1.json`）" }
+    },
+    {
+      "path": "Dockerfile",
+      "role": { "en": "kernel service container image (`docker build -t memware-kernel .`)", "zh": "内核服务容器镜像（`docker build -t memware-kernel .`）" }
     },
     {
       "path": "packages/",
@@ -179,7 +224,7 @@
     },
     {
       "path": "tests/",
-      "role": { "en": "MCP, Hook, and memory-kernel tests", "zh": "MCP、Hook 与记忆内核测试" }
+      "role": { "en": "MCP, hook, memory-engine, and kernel-service tests", "zh": "MCP、hook、记忆引擎与内核服务测试" }
     }
   ],
   "license": {

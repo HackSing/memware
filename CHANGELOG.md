@@ -6,54 +6,77 @@ This file records user-visible changes to memware. Version numbers follow [Seman
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-12
+
 ### Added
 
-- Stateless kernel service (`src/kernel/`, `bun run kernel:serve`): a token-gated HTTP surface — `GET /health`, `POST /extract`, `POST /embed`, `POST /search` — for hosts that want memware's extraction, embedding and ranking without its storage. It keeps no state, never reads the local data directory, and never imports SQLite or the MCP SDK. `/extract` returns the wire contract directly (facts about the user only, entity candidates, edges, `extractorVersion`, content fingerprints), gates confidence, honours a caller-supplied suppression list, and rejects sources that are not in the request. Wire contract: `contracts/kernel.v1.json`; container image: repo-root `Dockerfile` (`docker build -t memware-kernel .`); binaries: `bun run kernel:build` → `dist/kernel/`. / 无状态内核服务（`src/kernel/`，`bun run kernel:serve`）：需 Bearer token 的 HTTP 接口 `GET /health`、`POST /extract`、`POST /embed`、`POST /search`，供宿主在不使用 memware 存储的前提下复用提炼、向量化与检索能力。服务不持有任何状态，不读本地数据目录，也不引入 SQLite 与 MCP SDK。`/extract` 直接产出契约形状（只含用户本人的事实、实体候选、边、`extractorVersion` 与正文指纹），执行置信度门槛与调用方抑制名单，并拒绝引用请求中不存在的来源消息。契约见 `contracts/kernel.v1.json`，镜像见仓根 `Dockerfile`（`docker build -t memware-kernel .`），二进制用 `bun run kernel:build` 产出到 `dist/kernel/`。
+- Stateless kernel service (`src/kernel/`, `bun run kernel:serve`): a token-gated HTTP surface — `GET /health`, `POST /extract`, `POST /embed`, `POST /search` — for hosts that want memware's extraction, embedding and ranking without its storage. `GET /health` is the **only unauthenticated endpoint** (container and k8s probes must call it without a credential, and it returns versions and model names only); every other endpoint requires `Authorization: Bearer <MEMWARE_KERNEL_TOKEN>`. It keeps no state, never reads the local data directory, and never imports SQLite or the MCP SDK. `/extract` returns the wire contract directly (facts about the user only, entity candidates, edges, `extractorVersion` `kernel-extract-v1`, content fingerprints), gates confidence, honours a caller-supplied suppression list, and rejects sources that are not in the request. Configuration is environment-only: `MEMWARE_KERNEL_TOKEN` (required, min 16 chars), `MEMWARE_KERNEL_HOST` (default `127.0.0.1`; the container image sets `0.0.0.0`), `MEMWARE_KERNEL_PORT` (default `18971`), `MEMWARE_KERNEL_MAX_TEXTS` (default `256`), `MEMWARE_KERNEL_MAX_CANDIDATES` (default `2000`), `MEMWARE_KERNEL_TIMEOUT_MS` (default `30000`), plus the model channel `MEMWARE_API_KEY` / `MEMWARE_BASE_URL` / `MEMWARE_MODEL` / `MEMWARE_EMBEDDING_MODEL` / `MEMWARE_EMBEDDING_DIM` / `MEMWARE_EMBEDDING_BASE_URL` / `MEMWARE_EMBEDDING_API_KEY`; `MEMWARE_DATA_DIR` and `MEMWARE_USER_ID` are deliberately not read. Wire contract: `contracts/kernel.v1.json`; container image: repo-root `Dockerfile` (`docker build -t memware-kernel .`); binaries: `bun run kernel:build` → `dist/kernel/memware-kernel-<target>`. / 无状态内核服务（`src/kernel/`，`bun run kernel:serve`）：HTTP 接口 `GET /health`、`POST /extract`、`POST /embed`、`POST /search`，供宿主在不使用 memware 存储的前提下复用提炼、向量化与检索能力。`GET /health` 是**唯一免鉴权端点**（容器与 k8s 探针必须无凭据调用，返回体只含版本与模型名），其余端点都要求 `Authorization: Bearer <MEMWARE_KERNEL_TOKEN>`。服务不持有任何状态，不读本地数据目录，也不引入 SQLite 与 MCP SDK。`/extract` 直接产出契约形状（只含用户本人的事实、实体候选、边、`extractorVersion` `kernel-extract-v1` 与正文指纹），执行置信度门槛与调用方抑制名单，并拒绝引用请求中不存在的来源消息。配置只经环境变量注入：`MEMWARE_KERNEL_TOKEN`（必填，≥ 16 字符）、`MEMWARE_KERNEL_HOST`（默认 `127.0.0.1`，镜像内设为 `0.0.0.0`）、`MEMWARE_KERNEL_PORT`（默认 `18971`）、`MEMWARE_KERNEL_MAX_TEXTS`（默认 `256`）、`MEMWARE_KERNEL_MAX_CANDIDATES`（默认 `2000`）、`MEMWARE_KERNEL_TIMEOUT_MS`（默认 `30000`），以及模型通道 `MEMWARE_API_KEY` / `MEMWARE_BASE_URL` / `MEMWARE_MODEL` / `MEMWARE_EMBEDDING_MODEL` / `MEMWARE_EMBEDDING_DIM` / `MEMWARE_EMBEDDING_BASE_URL` / `MEMWARE_EMBEDDING_API_KEY`；刻意不读 `MEMWARE_DATA_DIR` 与 `MEMWARE_USER_ID`。契约见 `contracts/kernel.v1.json`，镜像见仓根 `Dockerfile`（`docker build -t memware-kernel .`），二进制用 `bun run kernel:build` 产出到 `dist/kernel/memware-kernel-<target>`。
+
 - Dependency-free capture entry point `memware/adapters`: `LastTurn`, `extractLastTurn` / `extractClaudeCodeLastTurn`, `extractCodexLastTurn`, `extractCodexTurnFromPayload`, `TranscriptAdapter`, `getAdapter`, and the pure `resolveHookTurn(agentId, hook, readFile?)` whose file reader is injectable. Hook mode now consumes this entry point, so embedders and memware share one definition of "the last finished turn". / 零依赖采集入口 `memware/adapters`：导出 `LastTurn`、`extractLastTurn` / `extractClaudeCodeLastTurn`、`extractCodexLastTurn`、`extractCodexTurnFromPayload`、`TranscriptAdapter`、`getAdapter`，以及可注入文件读取器的纯函数 `resolveHookTurn(agentId, hook, readFile?)`。hook 模式改为消费该入口，宿主与 memware 共用同一份「最后一轮对话」定义。
+
 - Cross-agent task continuity: new `memory_resume` MCP tool assembles an active-task-handoff briefing (topic, status, next step, the last agent that touched it, related memories) so work started in one agent can continue in another; `active_threads` records now carry `last_agent_id` and `updated_at`, and extraction prompts require a concrete, executable `next_step`. / 跨代理任务连续性：新增 `memory_resume` MCP 工具，组装任务交接简报（主题、状态、下一步、最后写入的 agent、相关记忆），任务可在不同 agent 间接力；`active_threads` 记录新增 `last_agent_id` 与 `updated_at`，提取提示词要求 `next_step` 必须具体可执行。
+
 - Agent provenance: `MEMWARE_AGENT_ID` (e.g. `claude-code`, `codex`, `cursor`, default `unknown`) is stamped into every write's provenance and reported by `memory_status`; validated as 1–64 chars of `[A-Za-z0-9._-]`. / Agent 溯源：`MEMWARE_AGENT_ID`（如 `claude-code`、`codex`、`cursor`，默认 `unknown`）写入每条记忆的 provenance 并在 `memory_status` 中上报；取值校验为 1–64 位 `[A-Za-z0-9._-]`。
+
 - Per-agent hook adapters: hook mode now resolves a transcript adapter by `MEMWARE_AGENT_ID` — Claude Code (transcript JSONL) and Codex (rollout JSONL plus inline `notify` payload with `input-messages`/`last-assistant-message`) are built in; unknown ids fall back to the Claude Code parser. Malformed records are still skipped, never thrown. / 按代理的 hook 适配器：hook 模式按 `MEMWARE_AGENT_ID` 选择会话解析器——内置 Claude Code（transcript JSONL）与 Codex（rollout JSONL 及内联 `notify` 载荷 `input-messages`/`last-assistant-message`）；未知 id 回退 Claude Code 解析器。坏记录仍然跳过、永不抛错。
+
 - Local HTTP API (`memware http`): token-gated (`MEMWARE_HTTP_TOKEN`, min 16 chars) loopback-only REST surface (`GET /health`, `POST /v1/process|context|search|resume`) for non-MCP agents and scripts; non-loopback `MEMWARE_HTTP_HOST` values are refused at startup, and the tenant boundary matches stdio mode (callers cannot select a user). / 本地 HTTP API（`memware http`）：面向非 MCP agent 与脚本的 REST 接口（`GET /health`，`POST /v1/process|context|search|resume`），必须设置 `MEMWARE_HTTP_TOKEN`（≥16 字符）且只绑定 loopback；非回环 `MEMWARE_HTTP_HOST` 在启动时被拒绝，租户边界与 stdio 模式一致（调用方不能选择用户）。
+
 - Windows x64 support: prebuilt self-contained binary (`memware-windows-x64` npm subpackage), launcher platform entry, and a CI matrix (`ubuntu`/`macos`/`windows`) running typecheck, tests, and native builds; `bun run memware:build` accepts `MEMWARE_BUILD_TARGETS` to compile a subset. / 支持 Windows x64：新增自包含二进制与 `memware-windows-x64` npm 子包、launcher 平台表项，以及覆盖 `ubuntu`/`macos`/`windows` 的 CI 矩阵（类型检查、测试、原生构建）；`bun run memware:build` 支持 `MEMWARE_BUILD_TARGETS` 选择性编译。
+
 - Multi-agent documentation: an onboarding matrix in the usage reference (Claude Code / Codex / Cursor / any MCP client) covering MCP registration, automatic vs instruction-driven writes, shared-vs-isolated `MEMWARE_USER_ID` semantics, an `agents-md-snippet.md` template with `memory_resume` guidance, and `claude-md-snippet.md` gains the resume step. / 多代理文档：使用手册新增接入矩阵（Claude Code / Codex / Cursor / 任意 MCP 客户端），覆盖 MCP 注册、自动写入与指令驱动写入、共享与隔离的 `MEMWARE_USER_ID` 语义；新增含 `memory_resume` 指引的 `agents-md-snippet.md` 模板，`claude-md-snippet.md` 补充 resume 步骤。
 
-### Fixed
+- Document the upgrade path for both distribution eras: source-checkout updates (`git pull` → re-verify → rebuild; binary path unchanged so no re-registration; `~/.memware/` data untouched) and the future npm path, in the bilingual READMEs and the usage reference. / 写明两种分发形态的更新方式：源码 checkout 更新（拉取 → 复验 → 重构建，二进制路径不变无需重新注册，`~/.memware/` 数据不受影响）与未来 npm 路径，双语 README 与使用手册同步。
 
-- Intent routing: classify the per-turn intent-analysis timeout by the analyzer's own abort signal instead of the error's `name`, so provider SDK abort classes (e.g. openai `APIUserAbortError`) are logged as a single timeout line with elapsed/budget/model rather than as a failure with a stack dump; always clear the budget timer. / 意图路由：按分析器自身的 abort 信号而非错误 `name` 判定超时，供应商 SDK 的中止错误类（如 openai `APIUserAbortError`）现在记为一行含耗时/预算/模型的超时日志，而不是带堆栈的失败；预算计时器总是被清理。
+- Add deployment-selectable tenant capability providers: the CLI keeps `single-process-v1`, while authenticated downstream hosts can opt into `trusted-host-v1` with an injected security-context resolver, per-action authorizer, opaque tenant identities, isolated handles, bounded active-tenant capacity, and idle eviction. / 新增可按下游选择的租户能力提供者：CLI 继续默认 `single-process-v1`，已认证宿主可显式接入 `trusted-host-v1`，并注入安全上下文解析、逐操作授权、不透明租户身份、独立句柄、活动租户上限与空闲回收。
 
 ### Changed
 
 - Intent routing budget is now configurable (`model.intent_timeout_ms`, adapter option `intentTimeoutMs`) and its default is raised from 5 s to 10 s. Measured against the default SiliconFlow DeepSeek-V3.2 endpoint: p50 ≈ 2.2 s, max 2.8 s in isolation, yet ~20% of production turns exceeded 5 s and silently lost long-term memory retrieval. / 意图路由预算改为可配置（`model.intent_timeout_ms`，adapter 选项 `intentTimeoutMs`），默认从 5 秒提高到 10 秒：对默认 SiliconFlow DeepSeek-V3.2 端点实测 p50 ≈ 2.2 秒、单测最大 2.8 秒，但生产约 20% 轮次超过 5 秒并静默失去长期记忆检索。
 
-### Added
+- Security: stop discovering model configuration from the current project directory. memware now derives Chat and Embedding endpoints only from built-in defaults and explicit `MEMWARE_*` variables, requires a separate key for a different Embedding origin, and exposes only sanitized endpoint origins in `memory_status`. / 安全修复：停止从当前项目目录自动发现模型配置；Chat 与 Embedding 端点只来自内置默认值和用户显式设置的 `MEMWARE_*`，跨 origin 的 Embedding 必须使用独立 Key，`memory_status` 仅展示脱敏后的 endpoint origin。
 
-- Document the upgrade path for both distribution eras: source-checkout updates (`git pull` → re-verify → rebuild; binary path unchanged so no re-registration; `~/.memware/` data untouched) and the future npm path, in the bilingual READMEs and the usage reference. / 写明两种分发形态的更新方式：源码 checkout 更新（拉取 → 复验 → 重构建，二进制路径不变无需重新注册，`~/.memware/` 数据不受影响）与未来 npm 路径，双语 README 与使用手册同步。
-- Add deployment-selectable tenant capability providers: the CLI keeps `single-process-v1`, while authenticated downstream hosts can opt into `trusted-host-v1` with an injected security-context resolver, per-action authorizer, opaque tenant identities, isolated handles, bounded active-tenant capacity, and idle eviction. / 新增可按下游选择的租户能力提供者：CLI 继续默认 `single-process-v1`，已认证宿主可显式接入 `trusted-host-v1`，并注入安全上下文解析、逐操作授权、不透明租户身份、独立句柄、活动租户上限与空闲回收。
+- 内核单一真源化：本仓成为记忆内核唯一真源。内核自包含改造——新增窄接口 `src/agent/memory/unified/sinks.ts`（`UnifiedWorkspaceSink`/`UnifiedPendingWriter`）与 `src/agent/memory/contentBlocks.ts`，切断对 avatanel `types/`、`evolution/`、`persona/`、`security/` 的引用（8 个外来文件删除）；`backgroundQueue.ts`、`unified/runMultimodalTurnExtraction.ts` 并入内核。avatanel 已切换为 git 依赖消费本仓（其内核副本删除）。
+
+- 包名改为 `memware`，新增 exports 子路径：`memware/memory/*`（内核）与 `memware/memware/*`（分发面），消费方可以 git 依赖直接导入 TypeScript 真源（Bun + `moduleResolution: bundler` 实测通过；`private: true` 不影响 bun git 依赖安装）。
+
+- 10 个内核测试自 avatanel `tests/unified-memory/` 迁入（迁移前后 266 条断言持平）；`bun test tests/unified-memory/ tests/memware/` 26 pass/0 fail，`tsc --noEmit` EXIT=0。
+
+- Generate English and Chinese README files from one structured source with an idempotency check. / 从单一结构化事实源生成英文与中文 README，并增加幂等校验。
+
+- Separate Issues, Discussions, and private security reporting, with bilingual contribution guidance. / 拆分 Issue、Discussions 与私密安全报告入口，补齐双语贡献规范。
+
+- Add collectible, privacy-preserving metric snapshots and evidence-based content templates. / 新增可采集、保护隐私的指标快照和证据型内容模板。
+
+- Add continuous content checks for bilingual output, links, YAML, and distribution claims. / 新增持续内容质量工作流，校验双语、链接、YAML 与分发口径。
+
+- License memware under MIT with product-level copyright attribution and include the license in every npm package. / memware 采用 MIT 许可证和产品级版权标识，并确保所有 npm 包携带许可证。
+
+### Fixed
+
+- Intent routing: classify the per-turn intent-analysis timeout by the analyzer's own abort signal instead of the error's `name`, so provider SDK abort classes (e.g. openai `APIUserAbortError`) are logged as a single timeout line with elapsed/budget/model rather than as a failure with a stack dump; always clear the budget timer. / 意图路由：按分析器自身的 abort 信号而非错误 `name` 判定超时，供应商 SDK 的中止错误类（如 openai `APIUserAbortError`）现在记为一行含耗时/预算/模型的超时日志，而不是带堆栈的失败；预算计时器总是被清理。
 
 ### Security
 
 - In trusted multi-tenant mode, caller-supplied `userId` is only a compatibility assertion and never a tenant selector. Authorization completes before storage creation; issuer namespaces prevent same-name collisions; security context is snapshotted before asynchronous authorization; every lease releases in `finally`; reset, cache, database, vector, audit, and asset lifecycle remain tenant-scoped. / 在可信多租户模式下，调用方 `userId` 只作为兼容断言，不能选择租户；授权先于存储创建，签发方命名空间隔离同名租户，安全上下文在异步授权前完成快照，每个租约均通过 `finally` 释放，reset、缓存、数据库、向量、审计与资产生命周期保持租户级隔离。
+
 - Bind every `serve` and `hook` process to exactly one trusted `MEMWARE_USER_ID`. The optional tool-level `userId` remains temporarily for protocol compatibility, but any value other than the bound tenant is rejected before storage or model access. / 每个 `serve` 与 `hook` 进程只绑定一个可信的 `MEMWARE_USER_ID`；工具级可选 `userId` 暂时保留用于协议兼容，但与绑定租户不一致的值会在访问存储或模型前被拒绝。
+
 - Replace lossy raw-ID directory names with instance-salted HMAC tenant keys. Dot segments, separators, Unicode replacement aliases, truncation aliases, and case-folding differences can no longer escape or intentionally share a tenant path. / 用实例加盐的 HMAC 租户键替代有损原始 ID 目录名；点段、路径分隔符、Unicode 替换别名、截断别名与大小写折叠不再造成路径逃逸或租户目录碰撞。
+
 - Redefine `memory_reset` as verified full tenant deletion. It drains in-flight work, closes cached services, removes the SQLite database and sidecars, vectors, audit logs, assets, relations, and caches, verifies live/staging paths are absent, and only then returns `ok: true`. / 将 `memory_reset` 明确定义为经过验证的完整租户删除：先排空在途操作、关闭缓存服务，再删除 SQLite 数据库及 sidecar、向量、审计日志、资产、关系和缓存；确认正式与暂存路径均不存在后才返回 `ok: true`。
+
 - Add cross-process reset locks, operation markers, crash recovery, and generation fencing. Independent review found and closed the generation-handshake, live-marker recovery, and marker-cleanup race windows so a completed reset cannot be followed by reads from a stale SQLite handle. / 新增跨进程 reset lock、操作 marker、宕机恢复与 generation 栅栏；独立复核发现并关闭 generation 握手、活跃 marker 恢复及异常 marker 清理三个竞态窗口，确保重置完成后不能再通过旧 SQLite 句柄读取历史记忆。
+
 - Stop serializing raw local `userId` and `sessionId` routing metadata into external extractor prompts while preserving conversation text and extraction behavior. / 外部抽取模型提示词不再序列化本地原始 `userId` 与 `sessionId` 路由元数据，同时保留业务正文和原有抽取能力。
+
 - Enforce a `0077` process umask and tighten memware-owned directories/files to `0700`/`0600`. Audit files now use a trusted local date and refuse symlinked date targets. / 进程统一使用 `0077` umask，并将 memware 自有目录与文件收紧为 `0700`/`0600`；审计文件使用可信本地日期命名，并拒绝日期文件符号链接目标。
+
 - Migrate the legacy `<dataDir>/<lossy-userId>/` layout only when stored IDs prove exclusive ownership by the bound tenant. Ambiguous aliases, missing ownership evidence, mixed tenants, symlinks, and simultaneous old/new layouts fail closed without moving data. / 旧版 `<dataDir>/<有损-userId>/` 布局仅在库内 ID 能证明数据完全属于当前绑定租户时迁移；目录别名、归属证据缺失、混租户、符号链接或新旧布局并存都会安全拒绝，且不移动原数据。
+
 - Sanitize `memory_status`: report boundary/layout/permission/reset state and endpoint origins without exposing the raw tenant ID, absolute data paths, salt, or key material. / 收紧 `memory_status`：只报告边界、布局、权限、重置状态与 endpoint origin，不再暴露原始租户 ID、绝对数据路径、盐或密钥材料。
+
 - Add deterministic security regression coverage for all six tenant-aware tools, path collision/escape, legacy migration, complete reset, cross-process stale handles, reset recovery races, trusted-host authorization and isolation, mutable-context and shutdown races, pool capacity, provider identifier redaction, audit symlinks, and private permissions. Final gates: `50 pass / 0 fail / 208 expectations`, typecheck, content checks, macOS/Linux builds, and three npm package tarballs. / 新增确定性安全回归，覆盖六个租户业务工具、路径碰撞/逃逸、旧数据迁移、完整重置、跨进程旧句柄、重置恢复竞态、可信宿主授权与隔离、可变上下文与关闭竞态、租户池容量、供应商标识脱敏、审计符号链接和私有权限；最终门禁为 `50 pass / 0 fail / 208 expectations`，并通过类型检查、内容检查、macOS/Linux 构建及三个 npm 包打包。
-
-### Changed
-
-- Security: stop discovering model configuration from the current project directory. memware now derives Chat and Embedding endpoints only from built-in defaults and explicit `MEMWARE_*` variables, requires a separate key for a different Embedding origin, and exposes only sanitized endpoint origins in `memory_status`. / 安全修复：停止从当前项目目录自动发现模型配置；Chat 与 Embedding 端点只来自内置默认值和用户显式设置的 `MEMWARE_*`，跨 origin 的 Embedding 必须使用独立 Key，`memory_status` 仅展示脱敏后的 endpoint origin。
-- 内核单一真源化：本仓成为记忆内核唯一真源。内核自包含改造——新增窄接口 `src/agent/memory/unified/sinks.ts`（`UnifiedWorkspaceSink`/`UnifiedPendingWriter`）与 `src/agent/memory/contentBlocks.ts`，切断对 avatanel `types/`、`evolution/`、`persona/`、`security/` 的引用（8 个外来文件删除）；`backgroundQueue.ts`、`unified/runMultimodalTurnExtraction.ts` 并入内核。avatanel 已切换为 git 依赖消费本仓（其内核副本删除）。
-- 包名改为 `memware`，新增 exports 子路径：`memware/memory/*`（内核）与 `memware/memware/*`（分发面），消费方可以 git 依赖直接导入 TypeScript 真源（Bun + `moduleResolution: bundler` 实测通过；`private: true` 不影响 bun git 依赖安装）。
-- 10 个内核测试自 avatanel `tests/unified-memory/` 迁入（迁移前后 266 条断言持平）；`bun test tests/unified-memory/ tests/memware/` 26 pass/0 fail，`tsc --noEmit` EXIT=0。
-- Generate English and Chinese README files from one structured source with an idempotency check. / 从单一结构化事实源生成英文与中文 README，并增加幂等校验。
-- Separate Issues, Discussions, and private security reporting, with bilingual contribution guidance. / 拆分 Issue、Discussions 与私密安全报告入口，补齐双语贡献规范。
-- Add collectible, privacy-preserving metric snapshots and evidence-based content templates. / 新增可采集、保护隐私的指标快照和证据型内容模板。
-- Add continuous content checks for bilingual output, links, YAML, and distribution claims. / 新增持续内容质量工作流，校验双语、链接、YAML 与分发口径。
-- License memware under MIT with product-level copyright attribution and include the license in every npm package. / memware 采用 MIT 许可证和产品级版权标识，并确保所有 npm 包携带许可证。
 
 ## 0.1.0 - 2026-08-29（源码快照，尚未公开发布）
 

@@ -1,23 +1,32 @@
 # memware
 
-**Long-term memory for any MCP-compatible agent.** memware is a portable memory
-kernel shipped as a self-contained single-file binary: point it at an
-OpenAI-compatible LLM endpoint and it distills each conversation turn into
-durable, searchable memory of your user — stored entirely on the local machine.
-The first target is [Claude Code](https://docs.claude.com/en/docs/claude-code),
-but any [MCP](https://modelcontextprotocol.io) client can use it.
+**Long-term memory for any MCP-compatible agent.** memware ships as a
+self-contained single-file binary that stores memory on the local machine: point
+it at an OpenAI-compatible LLM endpoint and it distills each conversation turn
+into durable, searchable memory of your user. The first target is
+[Claude Code](https://docs.claude.com/en/docs/claude-code), but any
+[MCP](https://modelcontextprotocol.io) client can use it.
 
-> **Pre-release status.** The source, tests, and local binary build are ready,
-> but `memware` is not yet available from the public npm registry and there is
-> no public GitHub Release. Use the source build below today. The `npx` command
-> is the installation path for the first public release.
+This document describes that **local memory binary**. The same repository also
+builds a separate, **stateless kernel service** for backends that keep their own
+storage and only want extraction, embedding and search over HTTP — that surface
+stores nothing and is covered in
+[Kernel service (stateless, for backends)](#kernel-service-stateless-for-backends).
 
-It runs in two modes:
+> **Pre-release status.** The source, tests, and local binary build are ready at
+> version `0.2.0`, but `memware` is
+> not yet available from the public npm registry
+> and there is no public GitHub Release. Use the source build below today. The
+> `npx` command is the installation path for the first public release.
+
+The local binary runs in three modes:
 
 - `memware serve` — an MCP stdio server exposing eight memory tools.
 - `memware hook` — a Stop-hook writer that persists the last turn automatically,
   so writing memory never depends on the model remembering to do it. Claude Code
   supplies a transcript path; Codex is supported via its inline `notify` payload.
+- `memware http` — the same memory store over a loopback-only, token-gated HTTP
+  API for agents and scripts that do not speak MCP.
 
 ## The eight tools
 
@@ -80,15 +89,16 @@ claude mcp add memware -e MEMWARE_API_KEY=sk-... -- npx -y memware@latest serve
 
 The `memware` package carries no binary itself; the prebuilt executable for your
 platform installs automatically as an `optionalDependencies` subpackage
-(`memware-darwin-arm64` or `memware-linux-x64`). The `memware` command is a thin
+(`memware-darwin-arm64`, `memware-linux-x64`, or `memware-windows-x64`). The
+`memware` command is a thin
 Node launcher that resolves and runs it. **Do not install with `--omit=optional`
 / `--no-optional`** — that skips the platform binary and memware will not start.
 
 ### Manual binary (fallback)
 
 If npm is unavailable, download the binary for your platform
-(`memware-darwin-arm64` or `memware-linux-x64`) from the project's GitHub
-Releases page, then point Claude Code at the local file:
+(`memware-darwin-arm64`, `memware-linux-x64`, or `memware-windows-x64.exe`) from
+the project's GitHub Releases page, then point Claude Code at the local file:
 
 ```sh
 chmod +x ./memware
@@ -122,6 +132,17 @@ and conversation data.
 | `MEMWARE_DATA_DIR` | no | `~/.memware` | Private storage root for the bound tenant and lifecycle metadata. |
 | `MEMWARE_USER_ID` | no | `default` | Trusted tenant id bound for the lifetime of this serve or hook process. |
 | `MEMWARE_DEBUG` | no | off | Set to `1` or `true` for verbose extraction diagnostics on stderr. |
+| `MEMWARE_KERNEL_TOKEN` | kernel service only | — | **Required to start the kernel service** (min 16 chars, e.g. `openssl rand -hex 32`). Bearer credential for every kernel endpoint except `GET /health`. |
+| `MEMWARE_KERNEL_HOST` | kernel service only | `127.0.0.1` | Kernel service bind address. The container image sets `0.0.0.0`. |
+| `MEMWARE_KERNEL_PORT` | kernel service only | `18971` | Kernel service bind port. |
+| `MEMWARE_KERNEL_MAX_TEXTS` | kernel service only | `256` | Maximum texts accepted by one `POST /embed`; above it the service returns `payload_too_large`. |
+| `MEMWARE_KERNEL_MAX_CANDIDATES` | kernel service only | `2000` | Maximum candidate vectors accepted by one `POST /search`; enforced before embedding. |
+| `MEMWARE_KERNEL_TIMEOUT_MS` | kernel service only | `30000` | Upstream model call budget for the kernel service. |
+
+The `MEMWARE_KERNEL_*` variables configure the stateless
+[kernel service](#kernel-service-stateless-for-backends) only; `serve`, `hook`,
+and `http` ignore them. The kernel service in turn never reads
+`MEMWARE_DATA_DIR` or `MEMWARE_USER_ID` — it has no local state to address.
 
 **About the defaults.** memware never re-declares the memory kernel's own
 defaults: any optional variable you leave unset simply falls through to the
@@ -275,6 +296,96 @@ curl -s http://127.0.0.1:18970/v1/resume \
   -H "Authorization: Bearer $MEMWARE_HTTP_TOKEN" \
   -d '{"topic":"refactor"}'
 ```
+
+## Kernel service (stateless, for backends)
+
+Everything above stores memory on the user's machine. `src/kernel/` is a second,
+independent entry point for the opposite deployment: a backend that already owns
+its database and only wants memware's *computation* — extraction, embedding and
+ranking — over HTTP. **It stores nothing.** No SQLite, no vectors, no audit log,
+no tenant tree; it never reads `MEMWARE_DATA_DIR` or `MEMWARE_USER_ID`.
+
+```sh
+export MEMWARE_KERNEL_TOKEN=$(openssl rand -hex 32)
+export MEMWARE_API_KEY=sk-...
+bun run kernel:serve
+# [memware-kernel] listening on http://127.0.0.1:18971 ...
+```
+
+| Endpoint | Auth | What it does |
+| --- | --- | --- |
+| `GET /health` | **none** | Liveness/readiness probe. Returns service version, `extractorVersion`, embedding model and declared dimension — never a credential, never memory data. |
+| `POST /extract` | Bearer | Distill one conversation into facts about the user, entity candidates and edges, each with a content fingerprint and the `extractorVersion` that produced it. |
+| `POST /embed` | Bearer | Embed up to `MEMWARE_KERNEL_MAX_TEXTS` texts in one call. |
+| `POST /search` | Bearer | Rank caller-supplied candidate vectors against a query; the candidate ceiling is enforced before embedding. |
+
+- **Bearer token is mandatory.** `MEMWARE_KERNEL_TOKEN` (min 16 chars) must be
+  set or the service refuses to start, and every endpoint except `GET /health`
+  requires `Authorization: Bearer <token>`. `GET /health` is the **only**
+  unauthenticated path, because container and Kubernetes probes must call it
+  without a credential.
+- **Extraction semantics.** Only statements whose subject is the user become
+  `preference` / `fact` / `conclusion`; other people can appear as entity
+  candidates but never as facts of their own. Sources that are not in the
+  request are rejected, low-confidence items and caller-suppressed fingerprints
+  are dropped, and `extractorVersion` (currently `kernel-extract-v1`) is
+  returned so the backend can decide when to re-extract.
+- **Wire contract.** [`contracts/kernel.v1.json`](../../contracts/kernel.v1.json)
+  is the source of truth for request/response shapes, error codes and statuses.
+- **Dependency isolation.** The kernel imports only pure modules from
+  `src/agent/memory/` plus `zod`; `bun:sqlite`, the MCP SDK and `src/memware/*`
+  are forbidden and `tests/kernel/isolation.test.ts` walks the real import graph
+  to assert it.
+- **Privacy.** Each request logs exactly one line — method, path, status,
+  duration, item count, request id. Conversation text, memory content, query
+  text and the token never reach the log.
+
+### Container
+
+The repository-root [`Dockerfile`](../../Dockerfile) builds a two-stage image
+(`oven/bun:1` compile → `debian:bookworm-slim` runtime, non-root, `EXPOSE 18971`):
+
+```sh
+docker build -t memware-kernel .
+
+docker run --rm -p 18971:18971 \
+  -e MEMWARE_KERNEL_TOKEN="$MEMWARE_KERNEL_TOKEN" \
+  -e MEMWARE_API_KEY="$MEMWARE_API_KEY" \
+  memware-kernel
+```
+
+The image contains no credentials and no memory data — everything is injected
+through the environment at run time. Inside the container the service binds
+`0.0.0.0`, so deploy it on a trusted network or behind a reverse proxy; the
+Bearer token remains mandatory either way.
+
+Standalone binaries build the same way as the local product:
+
+```sh
+bun run kernel:build   # → dist/kernel/memware-kernel-<target>
+```
+
+## Capture entry point (`memware/adapters`)
+
+`memware/adapters` is a dependency-free export that turns an agent's Stop-hook
+payload into the last finished turn — no storage, no MCP, no model client, no
+environment. memware's own `hook` mode consumes it, so an embedder and memware
+share one definition of "the last finished turn":
+
+```ts
+import { resolveHookTurn } from "memware/adapters";
+
+const resolved = resolveHookTurn("claude-code", hookPayload);
+if (resolved.turn) {
+  // resolved.turn.userMessage / assistantMessage, resolved.sessionId
+}
+```
+
+It also exports `LastTurn`, `TranscriptAdapter`, `getAdapter`,
+`extractLastTurn` / `extractClaudeCodeLastTurn`, `extractCodexLastTurn` and
+`extractCodexTurnFromPayload`. `resolveHookTurn` takes an optional third
+argument, the file reader, so a host with a virtual transcript source never
+touches the real disk.
 
 ## Teach the model to read (recommended)
 
