@@ -38,6 +38,12 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Build kernel service binary (linux target)
+        if: matrix.os == 'ubuntu-latest'
+        run: bun run kernel:build
+        env:
+          MEMWARE_BUILD_TARGETS: linux-x64
+
       - name: Build binaries (linux/macos runners cross-compile; windows builds native)
         if: matrix.os != 'windows-latest'
         run: bun run memware:build

@@ -1,6 +1,6 @@
 {
   "name": "memware",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -15,16 +15,19 @@
   "exports": {
     "./memory/*": "./src/agent/memory/*.ts",
     "./memware/*": "./src/memware/*.ts",
+    "./adapters": "./src/memware/adapters.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "bun test tests/memware/ tests/unified-memory/",
+    "test": "bun test tests/memware/ tests/unified-memory/ tests/kernel/",
     "typecheck": "bunx tsc --noEmit",
     "content:write": "bun scripts/render-readme.ts --write",
     "content:check": "bun scripts/render-readme.ts --check && bun scripts/content-check.ts",
     "memware:serve": "bun src/memware/main.ts serve",
     "memware:build": "bun scripts/memware-build.ts",
-    "memware:pack": "bun scripts/memware-pack.ts"
+    "memware:pack": "bun scripts/memware-pack.ts",
+    "kernel:serve": "bun src/kernel/main.ts",
+    "kernel:build": "bun scripts/memware-build.ts --kernel"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

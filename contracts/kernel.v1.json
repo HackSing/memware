@@ -1,0 +1,252 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/HackSing/memware/contracts/kernel.v1.json",
+  "title": "memware kernel service v1",
+  "description": "Wire contract of the stateless memware kernel service (src/kernel/). Source of truth for the ZBuddy backend integration: handoff 'ZBuddy 后端-跨端内容与记忆同步需求 2026-09-12' §8 (N7) for the endpoints and §5 for the memory model. The service only computes: it extracts memories about the user from conversations, embeds texts, and ranks caller-supplied candidate vectors. It stores nothing. Every endpoint requires 'Authorization: Bearer <MEMWARE_KERNEL_TOKEN>' except GET /health, which container and k8s probes call without a credential; every response carries 'x-request-id'.",
+  "type": "object",
+  "$defs": {
+    "health": {
+      "type": "object",
+      "description": "GET /health response. The only unauthenticated endpoint (liveness/readiness probes). Reports the deployed service version and the extraction contract version; it never exposes credentials or memory data.",
+      "required": ["ok", "service", "version", "extractorVersion", "embeddingModel", "embeddingDim"],
+      "properties": {
+        "ok": { "const": true },
+        "service": { "const": "memware-kernel" },
+        "version": {
+          "type": "string",
+          "description": "Semantic version of the service package (package.json version)."
+        },
+        "extractorVersion": {
+          "type": "string",
+          "description": "Identifies prompt + schema + gating of POST /extract. Stored with every fact; a change means the backend may re-extract. Current value: 'kernel-extract-v1'."
+        },
+        "embeddingModel": { "type": "string" },
+        "embeddingDim": {
+          "type": ["integer", "null"],
+          "description": "Declared dimension (MEMWARE_EMBEDDING_DIM); null when unset, in which case /embed reports the dimension of the vectors it produced."
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": ["messageId", "role", "text"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "text": { "type": "string" },
+        "sentAt": { "type": "number", "description": "Milliseconds epoch. Optional." }
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "required": ["conversationId", "messages"],
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1 },
+        "messages": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/message" } }
+      }
+    },
+    "knownEntity": {
+      "type": "object",
+      "description": "An entity the backend already stores. Its canonicalName and aliases are given to the model so repeated mentions resolve to one node.",
+      "required": ["entityId", "canonicalName", "entityType"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "canonicalName": { "type": "string", "minLength": 1 },
+        "entityType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Open set; first version uses person / project / topic / tool / place."
+        },
+        "aliases": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "extractRequest": {
+      "type": "object",
+      "description": "POST /extract request. userId is used for tenant isolation and is never sent to the model.",
+      "required": ["userId", "conversations"],
+      "properties": {
+        "userId": { "type": "string", "minLength": 1 },
+        "conversations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/conversation" }
+        },
+        "knownEntities": { "type": "array", "items": { "$ref": "#/$defs/knownEntity" } },
+        "suppressedFingerprints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fingerprints of memories the user deleted. Facts matching one are dropped so deletions never resurrect (handoff §5.1)."
+        }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "required": ["conversationId", "messageId"],
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1 },
+        "messageId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "description": "One memory about the user themselves. Facts whose subject is another person are never emitted; those people appear as entity candidates only (handoff §5.2.1).",
+      "required": ["content", "category", "confidence", "sourceRefs", "fingerprint", "entityNames"],
+      "properties": {
+        "content": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "enum": ["preference", "fact", "conclusion"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRefs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sourceRef" } },
+        "fingerprint": {
+          "type": "string",
+          "description": "sha256 of the normalised content. The backend's dedup and suppression key."
+        },
+        "entityNames": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["name", "type", "aliases"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Open set; 'unknown' when the model did not name one."
+        },
+        "aliases": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["factIndex", "entityName", "edgeType"],
+      "properties": {
+        "factIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into this response's own facts array."
+        },
+        "entityName": { "type": "string", "minLength": 1 },
+        "edgeType": { "const": "memory_mentions_entity" }
+      }
+    },
+    "extractResponse": {
+      "type": "object",
+      "required": ["extractorVersion", "facts", "entities", "edges"],
+      "properties": {
+        "extractorVersion": { "type": "string", "minLength": 1 },
+        "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+      }
+    },
+    "embedRequest": {
+      "type": "object",
+      "required": ["texts"],
+      "properties": {
+        "texts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Empty array returns no vectors. More than MEMWARE_KERNEL_MAX_TEXTS items is rejected with payload_too_large."
+        }
+      }
+    },
+    "embedResponse": {
+      "type": "object",
+      "required": ["model", "dim", "vectors"],
+      "properties": {
+        "model": { "type": "string" },
+        "dim": { "type": "integer", "minimum": 0 },
+        "vectors": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "number" } },
+          "description": "Same order and length as the request's texts."
+        }
+      }
+    },
+    "searchCandidate": {
+      "type": "object",
+      "required": ["id", "vector"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "vector": { "type": "array", "minItems": 1, "items": { "type": "number" } },
+        "createdAt": { "type": "number", "description": "Milliseconds epoch; drives the recency term." },
+        "docType": { "type": "string", "description": "Drives the type weight; unknown types share one weight." }
+      }
+    },
+    "searchRequest": {
+      "type": "object",
+      "description": "POST /search request. The query is either a ready vector or text the kernel embeds with the configured embedding model. Ranking is O(candidates × dim), so the candidate set is capped by MEMWARE_KERNEL_MAX_CANDIDATES (default 2000); a larger set is rejected with payload_too_large before the query is embedded.",
+      "required": ["query", "candidates"],
+      "properties": {
+        "query": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["vector"],
+              "properties": { "vector": { "type": "array", "minItems": 1, "items": { "type": "number" } } }
+            },
+            {
+              "type": "object",
+              "required": ["text"],
+              "properties": { "text": { "type": "string", "minLength": 1 } }
+            }
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/searchCandidate" },
+          "description": "At most MEMWARE_KERNEL_MAX_CANDIDATES entries (default 2000)."
+        },
+        "topK": { "type": "integer", "minimum": 1 },
+        "minSimilarity": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "searchResponse": {
+      "type": "object",
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "description": "Sorted by score descending, cut at topK and at minSimilarity.",
+          "items": {
+            "type": "object",
+            "required": ["id", "similarity", "score"],
+            "properties": {
+              "id": { "type": "string" },
+              "similarity": { "type": "number", "description": "Cosine similarity with the query vector." },
+              "score": { "type": "number", "description": "Weighted relevance + recency + doc-type score." }
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "description": "Every non-2xx response. HTTP status follows the code: unauthorized 401, not_found 404, method_not_allowed 405, invalid_request 400, extract_output_invalid 422, dimension_mismatch 422, payload_too_large 413, upstream_failed 502, upstream_timeout 504.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "unauthorized",
+                "not_found",
+                "method_not_allowed",
+                "invalid_request",
+                "extract_output_invalid",
+                "upstream_timeout",
+                "upstream_failed",
+                "payload_too_large",
+                "dimension_mismatch"
+              ]
+            },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

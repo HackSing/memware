@@ -1,0 +1,34 @@
+{
+  "facts": [
+    {
+      "content": "用户喜欢简洁的输出格式",
+      "category": "preference",
+      "confidence": 0.92,
+      "messageIds": ["msg-1"],
+      "entities": ["星河项目"]
+    },
+    {
+      "content": "用户和张三一起负责供应商评审",
+      "category": "fact",
+      "confidence": 0.81,
+      "messageIds": ["msg-1", "msg-1"],
+      "entities": ["张三", "星河"]
+    },
+    {
+      "content": "用户可能准备更换供应商",
+      "category": "conclusion",
+      "confidence": 0.3,
+      "messageIds": ["msg-2"]
+    },
+    {
+      "content": "用户喜欢详细的输出格式",
+      "category": "preference",
+      "confidence": 0.9,
+      "messageIds": ["msg-1"]
+    }
+  ],
+  "entities": [
+    { "name": "星河", "type": "project", "aliases": ["星河计划"] },
+    { "name": "张三", "type": "person", "aliases": ["老张"] }
+  ]
+}

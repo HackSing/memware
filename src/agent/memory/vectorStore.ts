@@ -9,7 +9,12 @@ import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { VectorSearchResult } from "./types";
+import { cosineSimilarity } from "./vectorMath";
 import { MEMORY_SQLITE_BUSY_TIMEOUT_MS } from "./types";
+
+// Re-exported so existing importers of the vector store keep one similarity
+// definition; the implementation lives in vectorMath.ts (no bun:sqlite).
+export { cosineSimilarity };
 
 const INIT_VECTOR_SQL = `
 CREATE TABLE IF NOT EXISTS vectors (
@@ -57,20 +62,6 @@ function blobToFloat32(buf: Uint8Array): number[] {
     arr[i] = view.getFloat32(i * 4, /* littleEndian */ true);
   }
   return arr;
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length === 0 || a.length !== b.length) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
 }
 
 interface VectorRow {

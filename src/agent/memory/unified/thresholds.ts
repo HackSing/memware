@@ -37,12 +37,24 @@ export function mergeThresholds(overrides?: Partial<Thresholds>): Thresholds {
   return { ...DEFAULT_THRESHOLDS, ...(overrides ?? {}) };
 }
 
+/** Floor applied when a category has no calibrated threshold of its own. */
+export const DEFAULT_CONFIDENCE_FLOOR = 0.5;
+
+/**
+ * Confidence gate for one extracted item.
+ *
+ * The category vocabulary is a parameter, not a fixed union: the local unified
+ * pipeline gates {@link FactCategory} items with {@link DEFAULT_THRESHOLDS},
+ * while the stateless kernel service gates its own contract categories
+ * (preference / fact / conclusion) with its own calibrated map. Both share this
+ * comparison and the {@link DEFAULT_CONFIDENCE_FLOOR} fallback.
+ */
 export function passesConfidenceGate(
   confidence: number,
-  category: FactCategory,
-  thresholds: Thresholds = DEFAULT_THRESHOLDS,
+  category: string,
+  thresholds: Readonly<Record<string, number>> = DEFAULT_THRESHOLDS,
 ): boolean {
-  return confidence >= (thresholds[category] ?? 0.5);
+  return confidence >= (thresholds[category] ?? DEFAULT_CONFIDENCE_FLOOR);
 }
 
 // ── Hard gate ─────────────────────────────────────────────────────

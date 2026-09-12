@@ -11,12 +11,10 @@
  * what. The Stop hook "success" output is simply exit 0 with empty stdout.
  */
 
-import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { resolveHookTurn } from "./adapters";
 import type { MemwareEnv } from "./env";
 import { buildExtractionConfig, processTurn } from "./processTurn";
-import { getAdapter } from "./transcripts";
-import type { LastTurn } from "./transcript";
 import type { TenantLease, TenantProvider } from "./tenantProvider";
 
 const HookInputSchema = z
@@ -36,40 +34,6 @@ function logSkip(reason: string, detail?: unknown): HookResult {
   const suffix = detail === undefined ? "" : `: ${detail instanceof Error ? detail.message : String(detail)}`;
   console.error(`[memware hook] skipped (${reason})${suffix}`);
   return { wrote: false, reason };
-}
-
-/**
- * Resolve the last turn for this hook invocation using the agent's adapter:
- * prefer a transcript file when the payload carries one, otherwise let the
- * adapter pull the turn inline from the payload (e.g. Codex notify).
- * Returns null (with a skip reason) when nothing usable is found.
- */
-export function resolveHookTurn(
-  agentId: string,
-  hook: { session_id?: string; transcript_path?: string } & Record<string, unknown>,
-): { turn: LastTurn; sessionId: string } | { turn: null; reason: string; detail?: unknown } {
-  const adapter = getAdapter(agentId);
-  const sessionId = hook.session_id ?? `memware-hook-${agentId}`;
-
-  if (hook.transcript_path) {
-    let transcriptText: string;
-    try {
-      transcriptText = readFileSync(hook.transcript_path, "utf8");
-    } catch (err) {
-      return { turn: null, reason: "transcript-unreadable", detail: err };
-    }
-    if (!adapter.extractLastTurn) {
-      return { turn: null, reason: `adapter-without-transcript-support:${adapter.id}` };
-    }
-    const turn = adapter.extractLastTurn(transcriptText);
-    return turn ? { turn, sessionId } : { turn: null, reason: "no-user-turn" };
-  }
-
-  if (adapter.extractFromHookPayload) {
-    const turn = adapter.extractFromHookPayload(hook);
-    return turn ? { turn, sessionId } : { turn: null, reason: "no-user-turn" };
-  }
-  return { turn: null, reason: "no-transcript-path" };
 }
 
 /**

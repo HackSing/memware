@@ -1,10 +1,14 @@
 /**
  * memware — cross-platform single-file binary build.
  *
- * Compiles src/memware/main.ts into self-contained executables via
+ * Compiles an entry point into self-contained executables via
  * `bun build --compile --target=...`. Each product embeds the Bun runtime plus
- * the entire memory kernel, so it runs with no avatanel source tree and no Bun
- * on the host. Output lands in dist/memware/ (gitignored).
+ * its own module graph, so it runs with no avatanel source tree and no Bun on
+ * the host. Output lands in dist/ (gitignored).
+ *
+ * Two products share one platform matrix:
+ *   • {@link MEMWARE_PRODUCT} — the local CLI (MCP serve / http / hook).
+ *   • {@link KERNEL_PRODUCT}  — the stateless kernel service (`--kernel`).
  *
  * {@link MEMWARE_TARGETS} is the single source of truth for the supported
  * platform matrix: the build reads bunTarget/binaryFile, the pack step reads
@@ -64,9 +68,39 @@ export const MEMWARE_DIST_DIR = "dist/memware";
 /** Binary name inside each platform subpackage (what the launcher spawns). */
 export const MEMWARE_PACKAGE_BINARY = "memware";
 
-/** Absolute path of a target's compiled binary in dist/. */
-export function distBinaryPath(target: MemwareTarget): string {
-  return join(MEMWARE_DIST_DIR, target.binaryFile);
+/** One compilable product: an entry point plus where its binaries land. */
+export interface BuildProduct {
+  /** CLI label used in build logs. */
+  name: string;
+  /** Repo-root-relative entry module. */
+  entry: string;
+  /** Output directory for this product's binaries. */
+  distDir: string;
+  /** Replaces the leading "memware" of {@link MemwareTarget.binaryFile}. */
+  binaryPrefix: string;
+}
+
+export const MEMWARE_PRODUCT: BuildProduct = {
+  name: "memware",
+  entry: MEMWARE_ENTRY,
+  distDir: MEMWARE_DIST_DIR,
+  binaryPrefix: "memware",
+};
+
+/** Stateless kernel service: no MCP, no SQLite, deployed as a container. */
+export const KERNEL_PRODUCT: BuildProduct = {
+  name: "kernel",
+  entry: "src/kernel/main.ts",
+  distDir: "dist/kernel",
+  binaryPrefix: "memware-kernel",
+};
+
+/** Repo-relative path of a target's compiled binary in dist/. */
+export function distBinaryPath(
+  target: MemwareTarget,
+  product: BuildProduct = MEMWARE_PRODUCT,
+): string {
+  return join(product.distDir, target.binaryFile.replace(/^memware/, product.binaryPrefix));
 }
 
 async function fileSize(path: string): Promise<number> {
@@ -79,8 +113,8 @@ function humanSize(bytes: number): string {
 }
 
 /** Compile one target. Throws (non-zero) on any build failure. */
-async function buildTarget(target: MemwareTarget): Promise<void> {
-  const outfile = distBinaryPath(target);
+async function buildTarget(target: MemwareTarget, product: BuildProduct): Promise<void> {
+  const outfile = distBinaryPath(target, product);
   await mkdir(dirname(outfile), { recursive: true });
   const proc = Bun.spawn(
     [
@@ -89,7 +123,7 @@ async function buildTarget(target: MemwareTarget): Promise<void> {
       "--compile",
       `--target=${target.bunTarget}`,
       `--outfile=${outfile}`,
-      MEMWARE_ENTRY,
+      product.entry,
     ],
     { stdout: "inherit", stderr: "inherit" },
   );
@@ -97,11 +131,13 @@ async function buildTarget(target: MemwareTarget): Promise<void> {
   if (code !== 0) {
     throw new Error(`bun build failed for ${target.bunTarget} (exit ${code})`);
   }
-  console.error(`[memware:build] ${target.binaryFile} → ${humanSize(await fileSize(outfile))}`);
+  console.error(
+    `[${product.name}:build] ${outfile} → ${humanSize(await fileSize(outfile))}`,
+  );
 }
 
 /** Compile every supported target, or the MEMWARE_BUILD_TARGETS subset. */
-export async function buildAll(): Promise<void> {
+export async function buildAll(product: BuildProduct = MEMWARE_PRODUCT): Promise<void> {
   const raw = process.env.MEMWARE_BUILD_TARGETS?.trim();
   let targets = MEMWARE_TARGETS;
   if (raw) {
@@ -118,15 +154,16 @@ export async function buildAll(): Promise<void> {
       );
     }
   }
-  await mkdir(MEMWARE_DIST_DIR, { recursive: true });
+  await mkdir(product.distDir, { recursive: true });
   for (const target of targets) {
-    await buildTarget(target);
+    await buildTarget(target, product);
   }
 }
 
 if (import.meta.main) {
-  buildAll().catch((err) => {
-    console.error(`[memware:build] ${err instanceof Error ? err.message : String(err)}`);
+  const product = process.argv.includes("--kernel") ? KERNEL_PRODUCT : MEMWARE_PRODUCT;
+  buildAll(product).catch((err) => {
+    console.error(`[${product.name}:build] ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });
 }

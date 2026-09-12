@@ -1,0 +1,11 @@
+{
+  "facts": [
+    {
+      "content": "用户每周五做复盘",
+      "category": "note",
+      "confidence": 0.9,
+      "messageIds": ["msg-1"]
+    }
+  ],
+  "entities": []
+}

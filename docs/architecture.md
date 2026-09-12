@@ -35,6 +35,47 @@ audit 目录硬编码为 `~/.avatanel/.unified-extraction-log`，会破坏 memwa
 `extractLastTurn`（`src/memware/transcript.ts`）解析 transcript 取最后一轮对话写库。
 任何失败只落 stderr 并 `exit 0`，绝不阻断宿主。
 
+末轮解析本身零运行时依赖，汇出在 `src/memware/adapters.ts`（`memware/adapters` 导出入口）：
+`LastTurn`、`extractLastTurn` / `extractClaudeCodeLastTurn`、`extractCodexLastTurn`、
+`extractCodexTurnFromPayload`、`TranscriptAdapter`、`getAdapter`，以及纯函数
+`resolveHookTurn(agentId, hook, readFile = readFileSync)`——文件读取由参数注入，宿主可接自己的
+会话来源。`hook.ts` 自身消费该入口，采集逻辑只有一份实现。
+
+## 内核服务（无状态）
+
+`src/kernel/` 是与本地产品并行的第二个入口：部署在后端旁、只算不存的 HTTP 服务，供服务端做记忆
+提炼、向量化与检索（契约真源 `contracts/kernel.v1.json`）。
+
+- 端点：`GET /health`、`POST /extract`、`POST /embed`、`POST /search`。除 `GET /health` 外都要求
+  `Authorization: Bearer <MEMWARE_KERNEL_TOKEN>`；`/health` 是**唯一免鉴权端点**（容器与 k8s 探针需要
+  无凭据调用），返回体只含版本与模型名，不含密钥与任何记忆数据。响应统一带 `x-request-id`；错误体
+  统一 `{ error: { code, message } }`，码与状态对照见契约文件。
+- 提炼语义：专用中文提示词（`src/kernel/extractPrompt.ts`）直接产出契约形状——只提炼以用户本人为
+  主语的 `preference` / `fact` / `conclusion`，他人只能成为实体候选。内核在模型返回后强制校验能校验
+  的部分：`sourceRefs` 必须指向请求里真实存在的 `messageId`（否则整体 422），置信度低于
+  `KERNEL_CONFIDENCE_THRESHOLDS` 的丢弃，`fingerprint = sha256(归一化正文)` 命中调用方抑制名单或
+  批内重复的丢弃，实体名按 `knownEntities` 的 canonicalName / aliases 归一。提示词或输出 schema 变化
+  必须同步升级 `extractorVersion`（`src/kernel/version.ts`），服务端据此决定是否重提炼。
+- 环境变量：`MEMWARE_KERNEL_TOKEN`（必填，≥ 16 字符）、`MEMWARE_KERNEL_HOST`（默认 `127.0.0.1`，
+  镜像内为 `0.0.0.0`）、`MEMWARE_KERNEL_PORT`（默认 18971）、`MEMWARE_KERNEL_MAX_TEXTS`（默认 256）、
+  `MEMWARE_KERNEL_MAX_CANDIDATES`（默认 2000）、`MEMWARE_KERNEL_TIMEOUT_MS`（默认 30000），以及模型
+  通道 `MEMWARE_API_KEY` / `MEMWARE_BASE_URL` / `MEMWARE_MODEL` / `MEMWARE_EMBEDDING_*`（跨 origin
+  必须给独立 key，规则与 `src/memware/env.ts` 一致）。
+  内核不读 `MEMWARE_DATA_DIR` / `MEMWARE_USER_ID` / `MEMWARE_AGENT_ID`——它没有本地态。
+- 隔离约束：`src/kernel/` 只依赖 `src/agent/memory/` 的纯模块（`llmClient`、`embedder`、`vectorMath`、
+  `search` 的 `rerankScore`、`unified/thresholds`、`hardGateText`、`extractorNormalization`、`ids`）与
+  `zod`；禁止 `bun:sqlite`、`@modelcontextprotocol/sdk` 与 `src/memware/*`。
+  `tests/kernel/isolation.test.ts` 遍历 `src/kernel/main.ts` 的真实 import 图做断言。
+- 容量保护：`/embed` 单次文本数超 `MEMWARE_KERNEL_MAX_TEXTS`、`/search` 候选数超
+  `MEMWARE_KERNEL_MAX_CANDIDATES` 时返回 `payload_too_large`（413）；`/search` 的上限在向量化之前
+  生效，排序复杂度 O(候选数 × 维度) 因此始终有界。
+- 隐私：`userId` 只用于服务端隔离，不进提示词；每请求只记一行
+  `method / path / status / 耗时 / items / requestId`，对话正文、记忆正文与 token 永不入日志。
+- 构建与镜像：`bun run kernel:serve` 本地起服务；`bun run kernel:build`（`scripts/memware-build.ts
+  --kernel`，复用 `MEMWARE_TARGETS` 平台矩阵，可用 `MEMWARE_BUILD_TARGETS` 取子集）产出
+  `dist/kernel/memware-kernel-<target>`；仓根 `Dockerfile` 为两段式（`oven/bun:1` 编译 →
+  `debian:bookworm-slim` 运行，非 root、`EXPOSE 18971`），`docker build -t memware-kernel .`。
+
 ## 分发产物
 
 `scripts/memware-build.ts` 的 `MEMWARE_TARGETS`（darwin-arm64 / linux-x64 平台矩阵单一真源）

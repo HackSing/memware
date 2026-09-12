@@ -47,6 +47,56 @@ export function shouldSuppressChatLogCandidate(query: string, candidate: VectorS
     isLikelyOperationalNoise(candidate.content);
 }
 
+// ── Rerank scoring (pure, shared) ─────────────────────────────
+//
+// The weighted score below is the only part of reranking that is free of the
+// local store's shape (content dedup, VectorSearchResult), so it is the part
+// the stateless kernel service (src/kernel/search.ts) reuses. Keeping it here
+// means a weight or decay change lands in both rankers at once.
+
+/** Type weight applied to candidates whose doc_type is not in DOC_TYPE_WEIGHTS. */
+export const UNKNOWN_DOC_TYPE_WEIGHT = 0.5;
+/** Exponential recency decay per day of age. */
+export const RECENCY_DECAY_PER_DAY = 0.02;
+/** Age assumed for candidates that carry no usable timestamp. */
+export const UNKNOWN_AGE_DAYS = 365;
+
+/** Ranking inputs of one candidate, independent of where it is stored. */
+export interface RerankSignals {
+  /** Cosine similarity in [0, 1]. */
+  similarity: number;
+  /** Unix seconds the candidate was created; omit/0 when unknown. */
+  timestampSec?: number;
+  /** doc_type used for the type weight; unknown types fall back to the constant. */
+  docType?: string;
+}
+
+/** Weights and reference point for {@link rerankScore}. */
+export interface RerankScoreConfig {
+  weights: ReadConfig["rerank_weights"];
+  /** Similarity floor used to normalise relevance (callers filter separately). */
+  minSimilarity: number;
+  /** Unix seconds treated as "now" — injected so scoring stays pure. */
+  nowSec: number;
+}
+
+/** Weighted rerank score: relevance + recency + doc-type weight. */
+export function rerankScore(signals: RerankSignals, cfg: RerankScoreConfig): number {
+  const { minSimilarity, weights } = cfg;
+  const relevance =
+    minSimilarity < 1 ? (signals.similarity - minSimilarity) / (1.0 - minSimilarity) : 1.0;
+
+  const ts = signals.timestampSec || 0;
+  const daysOld = ts ? Math.max((cfg.nowSec - ts) / 86400, 0) : UNKNOWN_AGE_DAYS;
+  const recency = 1.0 / (1.0 + daysOld * RECENCY_DECAY_PER_DAY);
+
+  const typeWeight =
+    (signals.docType !== undefined ? DOC_TYPE_WEIGHTS[signals.docType] : undefined) ??
+    UNKNOWN_DOC_TYPE_WEIGHT;
+
+  return weights.relevance * relevance + weights.recency * recency + weights.type_weight * typeWeight;
+}
+
 export class MemorySearch {
   constructor(
     private vectorStore: VectorStore,
@@ -90,10 +140,13 @@ export class MemorySearch {
     limit: number,
     cfg: ReadConfig,
   ): RankedResult[] {
-    const weights = cfg.rerank_weights;
     const threshold = cfg.rerank_threshold;
     const minSimilarity = cfg.min_similarity;
-    const nowTs = Date.now() / 1000;
+    const scoreConfig: RerankScoreConfig = {
+      weights: cfg.rerank_weights,
+      minSimilarity,
+      nowSec: Date.now() / 1000,
+    };
 
     const bestByContent = new Map<string, RankedResult>();
 
@@ -101,22 +154,10 @@ export class MemorySearch {
       const similarity = 1.0 - c.distance;
       if (similarity < minSimilarity) continue;
 
-      const relevance =
-        minSimilarity < 1 ? (similarity - minSimilarity) / (1.0 - minSimilarity) : 1.0;
-
-      // Recency: exponential decay
-      const ts = c.metadata.timestamp || 0;
-      const daysOld = ts ? Math.max((nowTs - ts) / 86400, 0) : 365;
-      const recency = 1.0 / (1.0 + daysOld * 0.02);
-
-      // Type weight
-      const typeWeight = DOC_TYPE_WEIGHTS[c.metadata.doc_type] ?? 0.5;
-
-      // Final score
-      const score =
-        weights.relevance * relevance +
-        weights.recency * recency +
-        weights.type_weight * typeWeight;
+      const score = rerankScore(
+        { similarity, timestampSec: c.metadata.timestamp, docType: c.metadata.doc_type },
+        scoreConfig,
+      );
 
       if (score >= threshold) {
         const ranked = { ...c, score };

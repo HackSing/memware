@@ -1,0 +1,29 @@
+{
+  "userId": "tenant-42",
+  "conversations": [
+    {
+      "conversationId": "conv-1",
+      "messages": [
+        {
+          "messageId": "msg-1",
+          "role": "user",
+          "text": "我们项目叫星河，我喜欢简洁的输出格式；供应商评审我和张三一起负责。",
+          "sentAt": 1757600000000
+        },
+        {
+          "messageId": "msg-2",
+          "role": "assistant",
+          "text": "明白，之后都用简洁格式回复你。"
+        }
+      ]
+    }
+  ],
+  "knownEntities": [
+    {
+      "entityId": "ent-1",
+      "canonicalName": "星河",
+      "entityType": "project",
+      "aliases": ["星河项目", "Galaxy"]
+    }
+  ]
+}
