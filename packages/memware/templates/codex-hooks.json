@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "name": "memware",
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y memware hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

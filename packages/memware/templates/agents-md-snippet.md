@@ -4,8 +4,11 @@
 
   Copy the section below into the instruction file your agent reads
   (AGENTS.md for Codex, .cursor/rules or .cursorrules for Cursor, ...).
-  Unlike Claude Code there is usually no Stop hook, so these instructions also
-  cover the write side.
+
+  The read side applies to every agent. The write side is only needed where no
+  Stop hook captures turns automatically — Codex has one (see
+  templates/codex-hooks.json), so on Codex the "Writing" section below can be
+  dropped; Cursor and most other MCP clients still need it.
 -->
 
 ## Long-term memory (memware)

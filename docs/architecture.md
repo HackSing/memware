@@ -33,9 +33,14 @@ audit 目录硬编码为 `~/.avatanel/.unified-extraction-log`，会破坏 memwa
 
 ## hook 模式
 
-`src/memware/hook.ts` 读 stdin 的 Claude Code Stop hook JSON（`transcript_path`），
-`extractLastTurn`（`src/memware/transcript.ts`）解析 transcript 取最后一轮对话写库。
+`src/memware/hook.ts` 读 stdin 的 Stop hook JSON（`session_id` + `transcript_path`），
+按 `MEMWARE_AGENT_ID` 选适配器解析 transcript 取最后一轮对话写库。
 任何失败只落 stderr 并 `exit 0`，绝不阻断宿主。
+
+Claude Code 与 Codex 走同一条路：Codex 原生 hooks 引擎（`~/.codex/hooks.json` 的 `Stop`
+事件，实测于 codex-cli 0.153.4）投递的 payload 同样带 `session_id` 与指向 rollout JSONL 的
+`transcript_path`，因此无需任何 Codex 专属分支。Codex 的 `notify` 退化为老版本兼容路径——
+payload 内联且不带会话 id，见下节。
 
 末轮解析本身零运行时依赖，汇出在 `src/memware/adapters.ts`（`memware/adapters` 导出入口）：
 `LastTurn`、`extractLastTurn` / `extractClaudeCodeLastTurn`、`extractCodexLastTurn`、
@@ -50,6 +55,13 @@ audit 目录硬编码为 `~/.avatanel/.unified-extraction-log`，会破坏 memwa
 因此宿主不给会话 id 时适配器必须自行派生：Codex rollout 取 `session_meta.session_id`，
 Codex notify 取 `turn-id` 并按轮独立成域（`codex-turn-<id>`，索引 0），不虚构 Codex 从未
 上报的会话边界。
+
+rollout 里 `role: "user"` 并不等于用户本人输入：Codex 会把自己注入的上下文
+（`environments.*` / `plugins.*` / `agents_md.*`）以同一 role 写入。每个 content block 带
+`internal_chat_message_metadata_passthrough.content_item_kinds` 标注来源，只有 `user.*`
+是本人，assistant 记录一律是 `unknown`——故该过滤只作用于 user 记录。kinds 缺失或与 block
+数量不对齐时整条保留，老 rollout 行为不变。不过滤会同时抬高 `turnIndex`，并可能把注入文本
+当成 `userMessage` 送进抽取。
 
 ## 内核服务（无状态）
 

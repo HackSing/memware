@@ -208,43 +208,77 @@ what (each write is stamped; `memory_resume` shows the last agent per task).
 | Agent | MCP registration | Automatic writes | Read instructions |
 | --- | --- | --- | --- |
 | Claude Code | `claude mcp add ...` (above) | Stop hook (transcript file) | `templates/claude-md-snippet.md` → `CLAUDE.md` |
-| Codex | `[mcp_servers.memware]` in `~/.codex/config.toml` | `notify` hook (inline payload) | `templates/agents-md-snippet.md` → `AGENTS.md` |
+| Codex | `[mcp_servers.memware]` in `~/.codex/config.toml` | Stop hook (`~/.codex/hooks.json`, transcript file) | `templates/agents-md-snippet.md` → `AGENTS.md` |
 | Cursor | `.cursor/mcp.json` | none — instruction-driven | `templates/agents-md-snippet.md` → `.cursor/rules` |
 | Any MCP client | standard stdio registration | none — instruction-driven | adapt the agents snippet |
 
-### Codex (~/.codex/config.toml)
+### Codex
+
+Register the MCP server in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.memware]
 command = "/path/to/memware-linux-x64"
 args = ["serve"]
 env = { MEMWARE_API_KEY = "sk-...", MEMWARE_AGENT_ID = "codex" }
+```
 
-# automatic turn capture (inline payload — no transcript file needed)
+Then enable automatic writes with Codex's own Stop hook — merge
+[`templates/codex-hooks.json`](templates/codex-hooks.json) into
+`~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "name": "memware",
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "npx -y memware hook", "timeout": 30 }]
+      }
+    ]
+  }
+}
+```
+
+Codex delivers the Stop payload on stdin with `session_id` and a
+`transcript_path` pointing at the session's rollout JSONL — the same shape
+Claude Code uses, so `memware hook` needs no Codex-specific handling and
+records the real session id with ordinal turn indexes. Same never-blocks
+guarantee: failures log to stderr and exit `0`.
+
+Two things to know:
+
+- **Hooks require trust.** Codex marks a new or edited hook as needing review
+  and will not run it until you trust it; re-trusting is required after any
+  edit to the command. Expect a review prompt on the next session start.
+- **The hook process inherits no env from the MCP registration.** Export
+  `MEMWARE_API_KEY` (and `MEMWARE_BASE_URL` / `MEMWARE_MODEL` /
+  `MEMWARE_DATA_DIR` / `MEMWARE_USER_ID` when non-default) where Codex can see
+  them, or wrap the command in a script that sets them.
+
+<details>
+<summary>Legacy: the <code>notify</code> hook</summary>
+
+Older Codex builds without a hooks engine can use `notify` instead:
+
+```toml
 notify = ["/path/to/memware-linux-x64", "hook"]
 ```
 
-The Codex `notify` payload carries the finished turn inline
-(`input-messages` / `last-assistant-message`); the hook detects the absence of
-`transcript_path` and parses it directly. Same never-blocks guarantee as
-Claude Code: failures log to stderr and exit `0`.
-
-Two caveats specific to `notify`:
+The payload carries the finished turn inline (`input-messages` /
+`last-assistant-message`); the hook detects the absence of `transcript_path`
+and parses it directly. Two limits make this the fallback rather than the
+recommendation:
 
 - **`notify` is a single slot.** Codex runs one notify program, so a config
-  that already points at another tool cannot also run memware this way. Chain
-  them from one wrapper script, or drive memware from a transcript-path host
-  instead.
+  already pointing at another tool cannot also run memware this way.
 - **The payload has no session id**, only a per-turn `turn-id`. memware scopes
   each notify turn under `codex-turn-<id>` (index 0) rather than inventing a
   session boundary Codex never reported, so provenance and
-  `deleteByProvenance` stay per-turn. Rollout files, which do carry a real
-  `session_id` in their `session_meta` header, keep session-wide scope with
-  ordinal turn indexes.
+  `deleteByProvenance` stay per-turn instead of collapsing onto one key.
 
-The notify process needs the same env exports as the Claude Code hook
-(`MEMWARE_API_KEY`, optionally `MEMWARE_BASE_URL` / `MEMWARE_MODEL`,
-`MEMWARE_DATA_DIR` / `MEMWARE_USER_ID` if non-default).
+</details>
 
 ### Cursor (.cursor/mcp.json)
 

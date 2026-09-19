@@ -8,7 +8,14 @@
  *
  *   { "type": "response_item", "payload": { "type": "message",
  *       "role": "user"|"assistant",
- *       "content": [{ "type": "input_text"|"output_text", "text": "..." }] } }
+ *       "content": [{ "type": "input_text"|"output_text", "text": "..." }],
+ *       "internal_chat_message_metadata_passthrough": {
+ *         "content_item_kinds": ["user.text"] } } }
+ *
+ * `role: "user"` alone does not mean the person typed it: Codex files the
+ * context it injects on their behalf under the same role. `content_item_kinds`
+ * tags each block with its origin, so it is the discriminator — see
+ * {@link USER_AUTHORED_KIND_PREFIX}.
  *
  * and its `notify` hook payload (no transcript file), which inlines the turn:
  *
@@ -57,16 +64,59 @@ function textFromBlocks(content: unknown): string {
     .trim();
 }
 
+/**
+ * Prefix marking a content block the human actually authored.
+ *
+ * Codex writes context it injects on the user's behalf — environment context,
+ * plugin recommendations, AGENTS.md — as `role: "user"` records that look
+ * exactly like typed input. Their kinds are namespaced by origin
+ * (`environments.*`, `plugins.*`, `agents_md.*`), so only `user.*` is the
+ * person. Assistant records carry the kind `unknown`, which is why this test
+ * is applied to user records alone.
+ */
+const USER_AUTHORED_KIND_PREFIX = "user.";
+
+/** Per-content-block origin tags, when the record carries usable ones. */
+function contentItemKinds(record: { internal_chat_message_metadata_passthrough?: unknown }): string[] | null {
+  const meta = record.internal_chat_message_metadata_passthrough;
+  if (!meta || typeof meta !== "object") return null;
+  const kinds = (meta as { content_item_kinds?: unknown }).content_item_kinds;
+  if (!Array.isArray(kinds)) return null;
+  return kinds.every((k) => typeof k === "string") ? (kinds as string[]) : null;
+}
+
+/**
+ * Drop the blocks of a user record that Codex injected rather than the person.
+ *
+ * Kinds are positional, so filtering needs them to line up with the blocks;
+ * anything else (no metadata, a length mismatch, a non-array content) keeps
+ * the record whole. Rollouts written before `content_item_kinds` existed
+ * therefore behave exactly as they did before.
+ */
+function userAuthoredContent(content: unknown, kinds: string[] | null): unknown {
+  if (!Array.isArray(content) || kinds === null || kinds.length !== content.length) return content;
+  return content.filter((_, i) => kinds[i]!.startsWith(USER_AUTHORED_KIND_PREFIX));
+}
+
 function roleAndText(entry: unknown): { role: string; text: string } | null {
   if (!entry || typeof entry !== "object") return null;
   // response_item wrapper → payload.message; also accept a bare message object.
   const payload = (entry as { payload?: unknown }).payload ?? entry;
   if (!payload || typeof payload !== "object") return null;
-  const record = payload as { type?: unknown; role?: unknown; content?: unknown };
+  const record = payload as {
+    type?: unknown;
+    role?: unknown;
+    content?: unknown;
+    internal_chat_message_metadata_passthrough?: unknown;
+  };
   if (record.type !== undefined && record.type !== "message") return null;
   if (typeof record.role !== "string") return null;
   if (record.role !== "user" && record.role !== "assistant") return null;
-  return { role: record.role, text: textFromBlocks(record.content) };
+  const content =
+    record.role === "user"
+      ? userAuthoredContent(record.content, contentItemKinds(record))
+      : record.content;
+  return { role: record.role, text: textFromBlocks(content) };
 }
 
 /** Parse a rollout JSONL body into the final user/assistant turn. */

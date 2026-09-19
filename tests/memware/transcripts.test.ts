@@ -15,6 +15,19 @@ function rolloutLine(type: string, payload: unknown): string {
   return JSON.stringify({ timestamp: "2026-09-11T12:00:00.000Z", type, payload });
 }
 
+/** A message record shaped like a real rollout's, with per-block origin kinds. */
+function messageLine(role: string, blocks: Array<{ kind: string; text: string }>): string {
+  return rolloutLine("response_item", {
+    type: "message",
+    role,
+    content: blocks.map((b) => ({ type: role === "user" ? "input_text" : "output_text", text: b.text })),
+    internal_chat_message_metadata_passthrough: {
+      turn_id: "01a0ba73-ed22-7441-9de9-c48fa152daeb",
+      content_item_kinds: blocks.map((b) => b.kind),
+    },
+  });
+}
+
 test("unknown agent ids fall back to the Claude Code transcript parser", () => {
   expect(getAdapter("unknown").id).toBe("claude-code");
   expect(getAdapter("cursor").id).toBe("claude-code");
@@ -118,6 +131,78 @@ test("codex adapter supports both entry points", () => {
   expect(typeof adapter.extractFromHookPayload).toBe("function");
   expect(typeof adapter.sessionIdFromTranscript).toBe("function");
   expect(typeof adapter.sessionIdFromHookPayload).toBe("function");
+});
+
+test("codex-injected user records are not counted as turns", () => {
+  // Shape taken from a real rollout: Codex files environment context and
+  // plugin recommendations under role "user" alongside the typed prompt.
+  const text = [
+    messageLine("user", [
+      { kind: "plugins.recommendations", text: "<recommended_plugins>…</recommended_plugins>" },
+      { kind: "environments.environment_context", text: "<environment_context>…</environment_context>" },
+    ]),
+    messageLine("user", [{ kind: "user.text", text: "帮我看看构建失败的原因" }]),
+    messageLine("assistant", [{ kind: "unknown", text: "是缺依赖导致的" }]),
+  ].join("\n");
+
+  const turn = extractCodexLastTurn(text);
+  expect(turn).not.toBeNull();
+  expect(turn!.userMessage).toBe("帮我看看构建失败的原因");
+  expect(turn!.assistantMessage).toBe("是缺依赖导致的");
+  // Was 1 before the filter: the injected record inflated the ordinal.
+  expect(turn!.turnIndex).toBe(0);
+});
+
+test("an injected record after the real prompt never becomes the user message", () => {
+  const text = [
+    messageLine("user", [{ kind: "user.text", text: "真实输入" }]),
+    messageLine("user", [{ kind: "agents_md.instructions", text: "<agents_md>…</agents_md>" }]),
+    messageLine("assistant", [{ kind: "unknown", text: "好的" }]),
+  ].join("\n");
+
+  const turn = extractCodexLastTurn(text);
+  expect(turn!.userMessage).toBe("真实输入");
+  expect(turn!.turnIndex).toBe(0);
+});
+
+test("a mixed user record keeps only the blocks the person authored", () => {
+  const text = [
+    messageLine("user", [
+      { kind: "environments.environment_context", text: "<environment_context>noise</environment_context>" },
+      { kind: "user.text", text: "真正的问题" },
+    ]),
+    messageLine("assistant", [{ kind: "unknown", text: "答" }]),
+  ].join("\n");
+
+  expect(extractCodexLastTurn(text)!.userMessage).toBe("真正的问题");
+});
+
+test("records whose kinds cannot be trusted are kept whole", () => {
+  // No metadata at all (rollouts predating content_item_kinds).
+  const legacy = rolloutLine("response_item", {
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text: "老格式输入" }],
+  });
+  expect(extractCodexLastTurn(legacy)!.userMessage).toBe("老格式输入");
+
+  // Kinds present but not positionally aligned with the blocks: filtering
+  // would drop by the wrong index, so the record survives intact.
+  const misaligned = rolloutLine("response_item", {
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text: "对不齐的输入" }],
+    internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text", "user.text"] },
+  });
+  expect(extractCodexLastTurn(misaligned)!.userMessage).toBe("对不齐的输入");
+});
+
+test("a rollout with nothing the person authored yields no turn", () => {
+  const text = [
+    messageLine("user", [{ kind: "plugins.recommendations", text: "<recommended_plugins>…" }]),
+    messageLine("assistant", [{ kind: "unknown", text: "orphan" }]),
+  ].join("\n");
+  expect(extractCodexLastTurn(text)).toBeNull();
 });
 
 test("codex rollout session id comes from the session_meta header", () => {
