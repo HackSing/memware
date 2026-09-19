@@ -103,3 +103,49 @@ test("runHook without MEMWARE_MODEL resolves the kernel default extractor model"
   expect(result.wrote).toBe(true);
   expect(state.chatCompletionModels).toEqual([DEFAULT_CONFIG.model.model_name]);
 });
+
+test("an agent whose stop event can re-fire writes a repeated turn only once", async () => {
+  // Antigravity's lifecycle engine can invoke the hook twice for one finished
+  // turn; extraction is neither free nor idempotent, so the second is skipped.
+  const transcriptPath = join(tmp, "antigravity.jsonl");
+  writeFileSync(
+    transcriptPath,
+    [
+      JSON.stringify({
+        step_index: 1,
+        source: "USER_EXPLICIT",
+        type: "USER_INPUT",
+        content: `<USER_REQUEST>我${DEFAULT_EVIDENCE}</USER_REQUEST>`,
+      }),
+      JSON.stringify({ step_index: 2, source: "MODEL", type: "PLANNER_RESPONSE", content: "记住了" }),
+    ].join("\n"),
+    "utf8",
+  );
+
+  const { provider, state } = stubProvider();
+  const env: MemwareEnv = { ...makeEnv(), agentId: "antigravity" };
+  const stdin = JSON.stringify({ conversationId: "conv-dedupe", transcriptPath });
+
+  const first = await runHook(env, provider, stdin);
+  expect(first.wrote).toBe(true);
+  expect(state.chatCompletionCalls).toBe(1);
+
+  const second = await runHook(env, provider, stdin);
+  expect(second.wrote).toBe(false);
+  expect(second.reason).toBe("turn-already-processed");
+  // The decisive assertion: no second extraction was attempted.
+  expect(state.chatCompletionCalls).toBe(1);
+});
+
+test("agents that emit one stop per turn are not deduped", async () => {
+  const transcriptPath = writeTranscript("t4.jsonl", [
+    { type: "user", message: { role: "user", content: `我${DEFAULT_EVIDENCE}` } },
+    { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "记住了" }] } },
+  ]);
+  const { provider, state } = stubProvider();
+  const stdin = JSON.stringify({ session_id: "sess-nodedupe", transcript_path: transcriptPath });
+
+  await runHook(makeEnv(), provider, stdin);
+  await runHook(makeEnv(), provider, stdin);
+  expect(state.chatCompletionCalls).toBe(2);
+});

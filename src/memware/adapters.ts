@@ -13,6 +13,13 @@
 import { readFileSync } from "node:fs";
 import { extractLastTurn, type LastTurn } from "./transcript";
 import {
+  antigravitySessionIdFromPayload,
+  antigravityTranscriptPathFromPayload,
+  cleanAntigravityAssistantContent,
+  cleanAntigravityUserContent,
+  extractAntigravityLastTurn,
+} from "./transcripts/antigravity";
+import {
   codexSessionIdFromPayload,
   extractCodexLastTurn,
   extractCodexSessionId,
@@ -27,6 +34,11 @@ export {
   extractCodexSessionId,
   extractCodexTurnFromPayload,
   codexSessionIdFromPayload,
+  extractAntigravityLastTurn,
+  antigravitySessionIdFromPayload,
+  antigravityTranscriptPathFromPayload,
+  cleanAntigravityUserContent,
+  cleanAntigravityAssistantContent,
   getAdapter,
 };
 /** Claude Code's transcript parser under an agent-explicit name. */
@@ -54,14 +66,19 @@ export function fallbackSessionId(agentId: string): string {
 
 /**
  * Resolve the last turn for one hook invocation using the agent's adapter:
- * prefer a transcript file when the payload carries one, otherwise let the
- * adapter pull the turn inline from the payload (e.g. Codex notify).
- * Returns `turn: null` with a reason when nothing usable is found.
+ * prefer a transcript file when the payload names one — directly as
+ * `transcript_path`, or wherever the adapter finds it for hosts that spell it
+ * differently — otherwise let the adapter pull the turn inline from the
+ * payload (e.g. Codex notify). Returns `turn: null` with a reason when nothing
+ * usable is found.
  *
- * Session id resolution, most authoritative first: the hook's own
- * `session_id`, then whatever the adapter can derive from the source it just
- * parsed, then {@link fallbackSessionId}. Resolution happens per branch, since
- * a transcript body and a hook payload carry different identity.
+ * Session id resolution runs the same way whichever branch produced the turn,
+ * most authoritative first: the hook's own `session_id`, then the same value
+ * under a host-specific name, then whatever the transcript body says about
+ * itself, then {@link fallbackSessionId}. What the host states about the
+ * session outranks what the file it points at claims — a host can hand over a
+ * transcript whose body names no session (Antigravity) or names one it does
+ * not use.
  *
  * @param readFile injected file reader — defaults to `readFileSync`, so hosts
  *   with a virtual transcript source (or tests) never touch the real disk.
@@ -72,11 +89,19 @@ export function resolveHookTurn(
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
 ): ResolvedHookTurn {
   const adapter = getAdapter(agentId);
+  const transcriptPath = hook.transcript_path ?? adapter.transcriptPathFromHookPayload?.(hook);
 
-  if (hook.transcript_path) {
+  /** @param transcriptText the parsed body, when this branch had one. */
+  const resolveSessionId = (transcriptText?: string): string =>
+    hook.session_id ??
+    adapter.sessionIdFromHookPayload?.(hook) ??
+    (transcriptText === undefined ? undefined : adapter.sessionIdFromTranscript?.(transcriptText)) ??
+    fallbackSessionId(agentId);
+
+  if (transcriptPath) {
     let transcriptText: string;
     try {
-      transcriptText = readFile(hook.transcript_path, "utf8");
+      transcriptText = readFile(transcriptPath, "utf8");
     } catch (err) {
       return { turn: null, reason: "transcript-unreadable", detail: err };
     }
@@ -85,19 +110,13 @@ export function resolveHookTurn(
     }
     const turn = adapter.extractLastTurn(transcriptText);
     if (!turn) return { turn: null, reason: "no-user-turn" };
-    const sessionId =
-      hook.session_id ??
-      adapter.sessionIdFromTranscript?.(transcriptText) ??
-      fallbackSessionId(agentId);
-    return { turn, sessionId };
+    return { turn, sessionId: resolveSessionId(transcriptText) };
   }
 
   if (adapter.extractFromHookPayload) {
     const turn = adapter.extractFromHookPayload(hook);
     if (!turn) return { turn: null, reason: "no-user-turn" };
-    const sessionId =
-      hook.session_id ?? adapter.sessionIdFromHookPayload?.(hook) ?? fallbackSessionId(agentId);
-    return { turn, sessionId };
+    return { turn, sessionId: resolveSessionId() };
   }
   return { turn: null, reason: "no-transcript-path" };
 }

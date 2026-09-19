@@ -17,6 +17,7 @@ import { createMemwareServer } from "./server";
 import { runHook } from "./hook";
 import { resolveHttpOptions, startHttpServer } from "./httpServer";
 import { createSingleTenantProvider, type TenantProvider } from "./tenantProvider";
+import { getAdapter } from "./transcripts";
 
 const USAGE = `Usage: memware <serve|hook|http>
 
@@ -83,6 +84,12 @@ async function serve(): Promise<void> {
 
 async function hook(): Promise<void> {
   // Hook mode never blocks the host: any failure logs to stderr and exits 0.
+  // The host's required stdout is written on every path for the same reason —
+  // an agent that parses a response must get one even when the write failed.
+  // It is resolved from the raw env rather than from loadEnv(), because a
+  // misconfigured key makes loadEnv throw, and that is precisely the case
+  // where a host waiting on a response would otherwise hang.
+  const response = getAdapter(process.env.MEMWARE_AGENT_ID ?? "").hookResponse;
   try {
     const env = loadEnv();
     const provider = createSingleTenantProvider(env);
@@ -92,6 +99,7 @@ async function hook(): Promise<void> {
   } catch (err) {
     console.error(`[memware hook] ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (response !== undefined) process.stdout.write(`${response}\n`);
   process.exit(0);
 }
 

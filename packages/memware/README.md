@@ -209,6 +209,7 @@ what (each write is stamped; `memory_resume` shows the last agent per task).
 | --- | --- | --- | --- |
 | Claude Code | `claude mcp add ...` (above) | Stop hook (transcript file) | `templates/claude-md-snippet.md` → `CLAUDE.md` |
 | Codex | `[mcp_servers.memware]` in `~/.codex/config.toml` | Stop hook (`~/.codex/hooks.json`, transcript file) | `templates/agents-md-snippet.md` → `AGENTS.md` |
+| Antigravity | standard stdio registration | Stop hook (transcript file) | `templates/agents-md-snippet.md` → agent instructions |
 | Cursor | `.cursor/mcp.json` | none — instruction-driven | `templates/agents-md-snippet.md` → `.cursor/rules` |
 | Any MCP client | standard stdio registration | none — instruction-driven | adapt the agents snippet |
 
@@ -279,6 +280,31 @@ recommendation:
   `deleteByProvenance` stay per-turn instead of collapsing onto one key.
 
 </details>
+
+### Antigravity
+
+Register the MCP server the way Antigravity registers stdio servers, with
+`MEMWARE_AGENT_ID=antigravity`, then point its `Stop` lifecycle hook at
+`memware hook`. The hook needs `MEMWARE_API_KEY` in its environment, plus
+`MEMWARE_BASE_URL` / `MEMWARE_MODEL` / `MEMWARE_DATA_DIR` / `MEMWARE_USER_ID`
+when they are not the defaults.
+
+Antigravity differs from the other hosts in three ways, all handled by the
+adapter rather than by configuration:
+
+- **camelCase payload.** It sends `transcriptPath` and `conversationId` rather
+  than `transcript_path` / `session_id`; the conversation is the session, so
+  provenance is per-conversation.
+- **It reads a response.** memware writes `{"decision":""}` to stdout so the
+  agent loop continues. An empty stdout stalls it.
+- **Stop can re-fire for one finished turn.** memware records the last turn
+  written per conversation under `<MEMWARE_DATA_DIR>/processed-turns.json` and
+  skips a repeat, so the same turn is not extracted twice.
+
+Only the person's own words are stored: Antigravity wraps them in
+`<USER_REQUEST>` and puts its own metadata outside that tag, and only
+`PLANNER_RESPONSE` records count as the model's answer — tool narration
+(`GENERIC` records with `source: "MODEL"`) never becomes the stored reply.
 
 ### Cursor (.cursor/mcp.json)
 
@@ -431,17 +457,26 @@ if (resolved.turn) {
 It also exports `LastTurn`, `TranscriptAdapter`, `getAdapter`,
 `extractLastTurn` / `extractClaudeCodeLastTurn`, `extractCodexLastTurn`,
 `extractCodexTurnFromPayload`, `extractCodexSessionId`,
-`codexSessionIdFromPayload` and `fallbackSessionId`. `resolveHookTurn` takes an
-optional third argument, the file reader, so a host with a virtual transcript
-source never touches the real disk.
+`codexSessionIdFromPayload`, `extractAntigravityLastTurn`,
+`antigravitySessionIdFromPayload`, `antigravityTranscriptPathFromPayload`,
+`cleanAntigravityUserContent`, `cleanAntigravityAssistantContent` and
+`fallbackSessionId`. `resolveHookTurn` takes an optional third argument, the
+file reader, so a host with a virtual transcript source never touches the real
+disk.
 
 `resolveHookTurn` resolves the session id most-authoritative-first: the hook's
-own `session_id`, then whatever the adapter derives from the source it just
-parsed (`sessionIdFromTranscript` / `sessionIdFromHookPayload`), then
-`fallbackSessionId(agentId)`. The fallback is a constant, and `(session_id,
-turn_index)` is the provenance key `deleteByProvenance` scopes deletes to — so
-an adapter for a host that does not supply a session id should derive one
-rather than let every write of that agent share a single key.
+own `session_id`, then the same value under a host-specific name
+(`sessionIdFromHookPayload`), then what the transcript body says about itself
+(`sessionIdFromTranscript`), then `fallbackSessionId(agentId)`. What the host
+states outranks what the file it points at claims. The fallback is a constant,
+and `(session_id, turn_index)` is the provenance key `deleteByProvenance`
+scopes deletes to — so an adapter for a host that does not supply a session id
+should derive one rather than let every write of that agent share a single key.
+
+An adapter also declares host-specific hook behaviour: `hookResponse` for a
+host that parses stdout, `dedupeTurns` for a host whose stop event can fire
+more than once for one finished turn, and `transcriptPathFromHookPayload` for
+a host that does not spell the path `transcript_path`.
 
 ## Teach the model to read (recommended)
 

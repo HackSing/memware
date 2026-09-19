@@ -3,8 +3,11 @@
  *
  * Each agent client surfaces its "last finished turn" differently:
  *   • Claude Code Stop hook  → `transcript_path` pointing at a JSONL file.
- *   • Codex `notify`         → turn payload inline in the hook JSON itself
- *     (`input-messages` / `last-assistant-message`, no transcript file).
+ *   • Codex Stop hook        → the same, plus `session_id` (its `notify` hook
+ *     instead inlines the turn as `input-messages` / `last-assistant-message`
+ *     with no transcript file).
+ *   • Antigravity Stop hook  → camelCase `transcriptPath` / `conversationId`,
+ *     and it wants a decision object written back on stdout.
  *
  * An adapter may implement either entry point (or both). Unknown agent ids
  * fall back to the Claude Code transcript parser, which is the most common
@@ -19,6 +22,11 @@
  */
 
 import { extractLastTurn, type LastTurn } from "../transcript";
+import {
+  antigravitySessionIdFromPayload,
+  antigravityTranscriptPathFromPayload,
+  extractAntigravityLastTurn,
+} from "./antigravity";
 import {
   codexSessionIdFromPayload,
   extractCodexLastTurn,
@@ -37,6 +45,18 @@ export interface TranscriptAdapter {
   sessionIdFromTranscript?(transcriptText: string): string | undefined;
   /** Session id derivable from the hook payload, when the hook omits one. */
   sessionIdFromHookPayload?(hook: Record<string, unknown>): string | undefined;
+  /** Transcript location for hosts that do not use `transcript_path`. */
+  transcriptPathFromHookPayload?(hook: Record<string, unknown>): string | undefined;
+  /**
+   * Exact stdout the host requires on success. Claude Code and Codex accept an
+   * empty stdout with exit 0; hosts that parse a response declare it here.
+   */
+  readonly hookResponse?: string;
+  /**
+   * Skip a turn already written under the same session. Only for hosts whose
+   * stop event can fire more than once for one finished turn.
+   */
+  readonly dedupeTurns?: boolean;
 }
 
 const claudeCode: TranscriptAdapter = { id: "claude-code", extractLastTurn };
@@ -47,10 +67,21 @@ const codex: TranscriptAdapter = {
   sessionIdFromTranscript: extractCodexSessionId,
   sessionIdFromHookPayload: codexSessionIdFromPayload,
 };
+const antigravity: TranscriptAdapter = {
+  id: "antigravity",
+  extractLastTurn: extractAntigravityLastTurn,
+  sessionIdFromHookPayload: antigravitySessionIdFromPayload,
+  transcriptPathFromHookPayload: antigravityTranscriptPathFromPayload,
+  // Antigravity's lifecycle engine wants a decision object back, and it can
+  // re-fire Stop for one finished turn — hence both opt-ins.
+  hookResponse: JSON.stringify({ decision: "" }),
+  dedupeTurns: true,
+};
 
 const ADAPTERS: ReadonlyMap<string, TranscriptAdapter> = new Map([
   [claudeCode.id, claudeCode],
   [codex.id, codex],
+  [antigravity.id, antigravity],
 ]);
 
 /**

@@ -45,12 +45,16 @@ payload 内联且不带会话 id，见下节。
 末轮解析本身零运行时依赖，汇出在 `src/memware/adapters.ts`（`memware/adapters` 导出入口）：
 `LastTurn`、`extractLastTurn` / `extractClaudeCodeLastTurn`、`extractCodexLastTurn`、
 `extractCodexTurnFromPayload`、`extractCodexSessionId`、`codexSessionIdFromPayload`、
-`fallbackSessionId`、`TranscriptAdapter`、`getAdapter`，以及纯函数
+`extractAntigravityLastTurn`、`antigravitySessionIdFromPayload`、
+`antigravityTranscriptPathFromPayload`、`cleanAntigravityUserContent`、
+`cleanAntigravityAssistantContent`、`fallbackSessionId`、`TranscriptAdapter`、`getAdapter`，以及纯函数
 `resolveHookTurn(agentId, hook, readFile = readFileSync)`——文件读取由参数注入，宿主可接自己的
 会话来源。`hook.ts` 自身消费该入口，采集逻辑只有一份实现。
 
-会话身份按权威性依次解析：hook 自带的 `session_id` → 适配器从刚解析的来源派生
-（`sessionIdFromTranscript` / `sessionIdFromHookPayload`）→ `fallbackSessionId(agentId)`。
+会话身份按权威性依次解析：hook 自带的 `session_id` → 宿主换了名字的同一个值
+（`sessionIdFromHookPayload`）→ transcript 正文自述（`sessionIdFromTranscript`）→
+`fallbackSessionId(agentId)`。宿主的说法压过它所指文件的说法——宿主可能递来一份正文里
+没有会话标识的 transcript（Antigravity）。
 最后一档是常量，而 `(session_id, turn_index)` 正是 `deleteByProvenance` 的删除作用域，
 因此宿主不给会话 id 时适配器必须自行派生：Codex rollout 取 `session_meta.session_id`，
 Codex notify 取 `turn-id` 并按轮独立成域（`codex-turn-<id>`，索引 0），不虚构 Codex 从未
@@ -62,6 +66,16 @@ rollout 里 `role: "user"` 并不等于用户本人输入：Codex 会把自己�
 是本人，assistant 记录一律是 `unknown`——故该过滤只作用于 user 记录。kinds 缺失或与 block
 数量不对齐时整条保留，老 rollout 行为不变。不过滤会同时抬高 `turnIndex`，并可能把注入文本
 当成 `userMessage` 送进抽取。
+
+Antigravity 的注入形态相反：一条记录一轮，本人原话包在 `<USER_REQUEST>` 里、元数据在标签外，
+所以是拆包而非过滤（实测 276 条 `USER_INPUT` 全部如此，零嵌套）。另外只认 `PLANNER_RESPONSE`
+作为模型回复——`GENERIC` / `source: "MODEL"` 是工具步骤叙述，数量高出数倍且取最后一条，放进来
+会把工具执行日志当成回答存进记忆。
+
+适配器还声明宿主特有的 hook 行为：`hookResponse`（宿主要解析 stdout，Antigravity 需要
+`{"decision":""}`）、`dedupeTurns`（stop 事件可能对同一轮重复触发，经 `turnState.ts` 记在
+`<MEMWARE_DATA_DIR>/processed-turns.json`）、`transcriptPathFromHookPayload`（路径字段名不是
+`transcript_path`）。三项都是按适配器选入，Claude Code 与 Codex 行为不变。
 
 ## 内核服务（无状态）
 

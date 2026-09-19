@@ -16,6 +16,8 @@ import { resolveHookTurn } from "./adapters";
 import type { MemwareEnv } from "./env";
 import { buildExtractionConfig, processTurn } from "./processTurn";
 import type { TenantLease, TenantProvider } from "./tenantProvider";
+import { getAdapter } from "./transcripts";
+import { isTurnProcessed, markTurnProcessed, turnFingerprint } from "./turnState";
 
 const HookInputSchema = z
   .object({
@@ -61,6 +63,15 @@ export async function runHook(
   if (!resolved.turn) return logSkip(resolved.reason, resolved.detail);
 
   const { turn, sessionId } = resolved;
+
+  // Hosts that can re-fire their stop event for one finished turn opt in, so
+  // the same turn is not extracted and stored twice.
+  const dedupe = getAdapter(env.agentId).dedupeTurns === true;
+  const fingerprint = dedupe ? turnFingerprint(turn.userMessage, turn.assistantMessage) : "";
+  if (dedupe && isTurnProcessed(env.dataDir, env.agentId, sessionId, fingerprint)) {
+    return logSkip("turn-already-processed");
+  }
+
   let lease: TenantLease | undefined;
   try {
     lease = await provider.acquire({ action: "write" });
@@ -78,6 +89,9 @@ export async function runHook(
         agentId: env.agentId,
       });
     });
+    if (dedupe && result.ok) {
+      markTurnProcessed(env.dataDir, env.agentId, sessionId, fingerprint);
+    }
     return { wrote: result.ok, reason: result.error, actions: result.actions };
   } catch (err) {
     return logSkip("write-failed", err);
