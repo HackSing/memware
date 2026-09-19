@@ -229,6 +229,19 @@ The Codex `notify` payload carries the finished turn inline
 `transcript_path` and parses it directly. Same never-blocks guarantee as
 Claude Code: failures log to stderr and exit `0`.
 
+Two caveats specific to `notify`:
+
+- **`notify` is a single slot.** Codex runs one notify program, so a config
+  that already points at another tool cannot also run memware this way. Chain
+  them from one wrapper script, or drive memware from a transcript-path host
+  instead.
+- **The payload has no session id**, only a per-turn `turn-id`. memware scopes
+  each notify turn under `codex-turn-<id>` (index 0) rather than inventing a
+  session boundary Codex never reported, so provenance and
+  `deleteByProvenance` stay per-turn. Rollout files, which do carry a real
+  `session_id` in their `session_meta` header, keep session-wide scope with
+  ordinal turn indexes.
+
 The notify process needs the same env exports as the Claude Code hook
 (`MEMWARE_API_KEY`, optionally `MEMWARE_BASE_URL` / `MEMWARE_MODEL`,
 `MEMWARE_DATA_DIR` / `MEMWARE_USER_ID` if non-default).
@@ -382,10 +395,19 @@ if (resolved.turn) {
 ```
 
 It also exports `LastTurn`, `TranscriptAdapter`, `getAdapter`,
-`extractLastTurn` / `extractClaudeCodeLastTurn`, `extractCodexLastTurn` and
-`extractCodexTurnFromPayload`. `resolveHookTurn` takes an optional third
-argument, the file reader, so a host with a virtual transcript source never
-touches the real disk.
+`extractLastTurn` / `extractClaudeCodeLastTurn`, `extractCodexLastTurn`,
+`extractCodexTurnFromPayload`, `extractCodexSessionId`,
+`codexSessionIdFromPayload` and `fallbackSessionId`. `resolveHookTurn` takes an
+optional third argument, the file reader, so a host with a virtual transcript
+source never touches the real disk.
+
+`resolveHookTurn` resolves the session id most-authoritative-first: the hook's
+own `session_id`, then whatever the adapter derives from the source it just
+parsed (`sessionIdFromTranscript` / `sessionIdFromHookPayload`), then
+`fallbackSessionId(agentId)`. The fallback is a constant, and `(session_id,
+turn_index)` is the provenance key `deleteByProvenance` scopes deletes to — so
+an adapter for a host that does not supply a session id should derive one
+rather than let every write of that agent share a single key.
 
 ## Teach the model to read (recommended)
 

@@ -39,9 +39,17 @@ audit 目录硬编码为 `~/.avatanel/.unified-extraction-log`，会破坏 memwa
 
 末轮解析本身零运行时依赖，汇出在 `src/memware/adapters.ts`（`memware/adapters` 导出入口）：
 `LastTurn`、`extractLastTurn` / `extractClaudeCodeLastTurn`、`extractCodexLastTurn`、
-`extractCodexTurnFromPayload`、`TranscriptAdapter`、`getAdapter`，以及纯函数
+`extractCodexTurnFromPayload`、`extractCodexSessionId`、`codexSessionIdFromPayload`、
+`fallbackSessionId`、`TranscriptAdapter`、`getAdapter`，以及纯函数
 `resolveHookTurn(agentId, hook, readFile = readFileSync)`——文件读取由参数注入，宿主可接自己的
 会话来源。`hook.ts` 自身消费该入口，采集逻辑只有一份实现。
+
+会话身份按权威性依次解析：hook 自带的 `session_id` → 适配器从刚解析的来源派生
+（`sessionIdFromTranscript` / `sessionIdFromHookPayload`）→ `fallbackSessionId(agentId)`。
+最后一档是常量，而 `(session_id, turn_index)` 正是 `deleteByProvenance` 的删除作用域，
+因此宿主不给会话 id 时适配器必须自行派生：Codex rollout 取 `session_meta.session_id`，
+Codex notify 取 `turn-id` 并按轮独立成域（`codex-turn-<id>`，索引 0），不虚构 Codex 从未
+上报的会话边界。
 
 ## 内核服务（无状态）
 
